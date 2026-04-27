@@ -1,0 +1,13 @@
+symbols:
+  - AMD
+  - SOFI
+  - HIMS
+  - HOOD
+  - LMND
+  - OSCR
+  - WELL
+  - ZETA
+  - RLAY
+benchmarks:
+  - SPY
+  - QQQ
