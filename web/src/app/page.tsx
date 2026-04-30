@@ -12,13 +12,31 @@ type Signal = {
   aiExplanation?: string
 }
 
+type Consensus = {
+  ticker: string
+  direction: 'bullish' | 'neutral' | 'bearish'
+  agreement_score: number
+  confidence_score: number
+  freshness_score: number
+  conflict_flag: boolean
+  rationale: string
+}
+
 export default function HomePage() {
   const [watchlistText, setWatchlistText] = useState('AMD,SOFI,HIMS,HOOD,LMND,OSCR,WELL,ZETA,RLAY')
   const [loading, setLoading] = useState(false)
   const [asOf, setAsOf] = useState<string>('')
   const [regime, setRegime] = useState<number | null>(null)
   const [signals, setSignals] = useState<Signal[]>([])
+  const [consensus, setConsensus] = useState<Consensus[]>([])
+  const [brief, setBrief] = useState<string>('')
   const [error, setError] = useState<string>('')
+
+  async function refreshBrief() {
+    const res = await fetch('/api/brief/latest')
+    const data = await res.json()
+    setBrief(data?.brief?.markdown || '')
+  }
 
   async function onAnalyze() {
     setLoading(true)
@@ -35,6 +53,22 @@ export default function HomePage() {
       setAsOf(data.asOf)
       setRegime(data.regimeScore)
       setSignals(data.signals || [])
+
+      // Build consensus entries from available engine outputs
+      const c: Consensus[] = []
+      for (const s of watchlist) {
+        const cr = await fetch('/api/consensus', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ticker: s }),
+        })
+        if (cr.ok) {
+          const cj = await cr.json()
+          if (cj?.consensus) c.push(cj.consensus)
+        }
+      }
+      setConsensus(c)
+      await refreshBrief()
     } catch (e: any) {
       setError(e?.message || 'Failed')
     } finally {
@@ -43,10 +77,10 @@ export default function HomePage() {
   }
 
   return (
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <h1 style={{ marginBottom: 6 }}>Circuit Analyst MVP</h1>
+    <main style={{ maxWidth: 1120, margin: '0 auto', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <h1 style={{ marginBottom: 6 }}>Circuit Market Desk</h1>
       <p style={{ marginTop: 0, color: '#555' }}>
-        Most AI stock tools generate opinions. <b>Circuit Analyst generates accountable decisions.</b>
+        Aggregate AI intelligence from top open-source finance engines into one explainable analyst workspace.
       </p>
 
       <section style={{ padding: 16, border: '1px solid #ddd', borderRadius: 12, marginBottom: 20 }}>
@@ -57,7 +91,7 @@ export default function HomePage() {
           rows={2}
           style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
         />
-        <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={onAnalyze} disabled={loading} style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#111', color: '#fff' }}>
             {loading ? 'Analyzing...' : 'Run Analysis'}
           </button>
@@ -68,7 +102,7 @@ export default function HomePage() {
       </section>
 
       <section>
-        <h2 style={{ marginBottom: 8 }}>Signals</h2>
+        <h2 style={{ marginBottom: 8 }}>Signal Cards</h2>
         {signals.length === 0 ? (
           <p style={{ color: '#666' }}>Run analysis to generate signal cards.</p>
         ) : (
@@ -80,7 +114,7 @@ export default function HomePage() {
                   <span style={{ fontWeight: 700, color: s.decision === 'BUY' ? 'green' : s.decision === 'SELL' ? 'crimson' : '#333' }}>{s.decision}</span>
                 </div>
                 <p style={{ margin: '8px 0 4px' }}>Price: ${s.lastPrice}</p>
-                <p style={{ margin: '4px 0' }}>Score: {s.score} · Confidence: {(s.confidence * 100).toFixed(0)}%</p>
+                <p style={{ margin: '4px 0' }}>Confidence: {(s.confidence * 100).toFixed(0)}%</p>
                 <ul style={{ marginTop: 8, paddingLeft: 18 }}>
                   {s.reasons.map((r, i) => (
                     <li key={i}>{r}</li>
@@ -98,13 +132,42 @@ export default function HomePage() {
         )}
       </section>
 
+      <section style={{ marginTop: 24 }}>
+        <h2>Consensus View</h2>
+        {consensus.length === 0 ? (
+          <p style={{ color: '#666' }}>Consensus appears when engine outputs are ingested.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+            {consensus.map((c) => (
+              <article key={c.ticker} style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
+                <h3 style={{ marginTop: 0 }}>{c.ticker}</h3>
+                <p><b>{c.direction.toUpperCase()}</b> {c.conflict_flag ? '⚠ conflict' : ''}</p>
+                <p>Agreement: {(c.agreement_score * 100).toFixed(0)}%</p>
+                <p>Confidence: {(c.confidence_score * 100).toFixed(0)}%</p>
+                <p>Freshness: {(c.freshness_score * 100).toFixed(0)}%</p>
+                <p style={{ color: '#555' }}>{c.rationale}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2>Daily Brief</h2>
+        {brief ? (
+          <pre style={{ whiteSpace: 'pre-wrap', background: '#fafafa', border: '1px solid #eee', padding: 12, borderRadius: 8 }}>{brief}</pre>
+        ) : (
+          <p style={{ color: '#666' }}>No brief yet. Run analysis first.</p>
+        )}
+      </section>
+
       <section style={{ marginTop: 28 }}>
         <h2>Why this is different</h2>
         <ul>
-          <li><b>Decision-first:</b> clear Buy/Hold/Sell, not vague summaries.</li>
-          <li><b>Explainable:</b> every call traces to trend/momentum/volatility/regime.</li>
-          <li><b>Accountable:</b> every run can be stored and scored over time.</li>
-          <li><b>Modular:</b> can plug rule engine + agent frameworks.</li>
+          <li><b>Aggregation layer:</b> combines top OSS finance engines into one desk.</li>
+          <li><b>Decision-first:</b> clear directional calls with confidence and rationale.</li>
+          <li><b>Consensus + conflict:</b> disagreement is surfaced as an insight, not hidden.</li>
+          <li><b>Analyst workstation:</b> practical workflows, no auto-trading hype.</li>
         </ul>
       </section>
     </main>
