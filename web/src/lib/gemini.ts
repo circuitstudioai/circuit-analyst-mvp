@@ -11,7 +11,7 @@ export async function enrichWithGemini(signals: SignalRow[], regimeScore: number
   const out: SignalRow[] = []
   for (const s of signals) {
     try {
-      const prompt = `You are a concise market analyst. Explain this decision in 2 short bullet points, non-hype, practical.\nSymbol: ${s.symbol}\nDecision: ${s.decision}\nScore: ${s.score}\nConfidence: ${s.confidence}\nRegime score: ${regimeScore}\nReasons: ${s.reasons.join('; ')}`
+      const prompt = `You are a concise market analyst writing educational decision-support, not personalized financial advice. Add 2 short practical bullets.\nSymbol: ${s.symbol}\nDecision: ${s.decision}\nScore: ${s.score}\nConfidence: ${s.confidence}\nRegime score: ${regimeScore}\nThesis: ${s.thesis}\nRisks: ${s.riskFlags.join('; ')}\nInvalidation: ${s.invalidation}\nReasons: ${s.reasons.join('; ')}`
       const resp = await ai.models.generateContent({
         model,
         contents: prompt,

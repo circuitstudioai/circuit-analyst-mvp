@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { latestConsensus, latestDailyBrief, saveDailyBrief } from '@/lib/supabase'
+import { ConsensusResult } from '@/lib/consensus'
 
 export async function GET() {
   const existing = await latestDailyBrief()
   if (existing) return NextResponse.json({ brief: existing, source: 'stored' })
 
-  const consensus = (await latestConsensus()) as any[]
+  const consensus = (await latestConsensus()) as ConsensusResult[]
   if (!consensus.length) return NextResponse.json({ brief: null, source: 'none' })
 
   const topConviction = [...consensus]
@@ -14,7 +15,7 @@ export async function GET() {
 
   const highConflict = consensus.filter((x) => x.conflict_flag).slice(0, 5)
 
-  const keyCatalysts: any[] = []
+  const keyCatalysts: Array<Record<string, unknown>> = []
   const summary = `Generated from ${consensus.length} consensus rows. Top conviction: ${topConviction[0]?.ticker || 'N/A'}. Conflicts: ${highConflict.length}.`
   const title = 'Circuit Market Desk — Daily Brief'
 

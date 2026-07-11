@@ -1,33 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Circuit Market Desk web app
+
+Next.js app for public watchlist analysis. It is designed as educational
+decision-support: clear signals, evidence, risks, invalidation, and next
+actions. It does not provide personalized financial advice or execute trades.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Optional integrations
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `GEMINI_API_KEY`: adds concise analyst notes to each signal.
+- `GEMINI_MODEL`: overrides the Gemini model.
+- `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 
-## Learn More
+## Validation
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run lint
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Data
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The default analysis uses Yahoo's public chart endpoint and requires no API key.
+Paid/hosted data adapters can be added later behind the same signal shape.
 
 ## Deploy on Vercel
 

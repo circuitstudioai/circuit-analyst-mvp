@@ -7,7 +7,8 @@ export async function POST(req: NextRequest) {
     const rows = Array.isArray(body?.rows) ? body.rows : []
     const res = await ingestEngineOutputs(rows)
     return NextResponse.json(res)
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'ingest failed' }, { status: 500 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'ingest failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

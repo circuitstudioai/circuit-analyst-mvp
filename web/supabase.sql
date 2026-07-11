@@ -17,6 +17,7 @@ create table if not exists signals (
   last_price double precision not null,
   reasons text[] not null,
   ai_explanation text,
+  raw_payload jsonb not null default '{}',
   created_at timestamptz not null default now()
 );
 

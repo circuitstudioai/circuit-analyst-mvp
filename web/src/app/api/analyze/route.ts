@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
 
     const saved = await saveRun(payload)
     return NextResponse.json({ ...payload, saved })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Analyze failed' }, { status: 500 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Analyze failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
