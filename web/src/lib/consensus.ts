@@ -14,7 +14,7 @@ export type EngineOutput = {
   risk_flags?: string[]
   catalysts?: string[]
   suggested_next_action?: string
-  raw_payload?: any
+  raw_payload?: unknown
   raw_payload_ref?: string
   source_tag?: string
 }

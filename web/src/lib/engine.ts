@@ -1,23 +1,52 @@
 import { AnalyzeResponse, Decision, SignalRow } from './types'
 
-type PriceMap = Record<string, number[]>
+type PriceSeries = {
+  closes: number[]
+  dates: string[]
+}
 
-async function fetchCloses(symbol: string): Promise<number[]> {
+type PriceMap = Record<string, PriceSeries>
+
+async function fetchSeries(symbol: string): Promise<PriceSeries> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed data fetch for ${symbol}`)
   const json = await res.json()
-  const closes: number[] = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
-  return closes.filter((x: number | null) => typeof x === 'number')
+  const result = json?.chart?.result?.[0]
+  const timestamps: number[] = result?.timestamp ?? []
+  const closesRaw: Array<number | null> = result?.indicators?.quote?.[0]?.close ?? []
+  const closes: number[] = []
+  const dates: string[] = []
+  closesRaw.forEach((close, i) => {
+    if (typeof close === 'number') {
+      closes.push(close)
+      dates.push(new Date((timestamps[i] || 0) * 1000).toISOString().slice(0, 10))
+    }
+  })
+  return { closes, dates }
 }
 
 function mean(values: number[]) {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-function scoreSeries(closes: number[], regimeBias: number) {
+function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
+  const closes = series.closes
   if (closes.length < 110) {
-    return { score: 0, decision: 'HOLD' as const, confidence: 0.4, reasons: ['Insufficient price history'] }
+    return {
+      score: 0,
+      decision: 'HOLD' as const,
+      confidence: 0.05,
+      reasons: ['Insufficient price history for 100-day trend and 20-day risk checks'],
+      thesis: `${symbol} is not actionable because the public price series is too short for the engine checks.`,
+      riskFlags: ['Data coverage is insufficient'],
+      invalidation: 'Wait until at least 110 daily closes are available.',
+      nextAction: 'Abstain and collect more history.',
+      timeHorizon: 'swing',
+      dataQuality: 'insufficient' as const,
+      abstained: true,
+      last: closes.at(-1) ?? 0,
+    }
   }
 
   const last = closes[closes.length - 1]
@@ -40,6 +69,31 @@ function scoreSeries(closes: number[], regimeBias: number) {
 
   const decision: Decision = score >= 0.35 ? 'BUY' : score <= -0.35 ? 'SELL' : 'HOLD'
   const confidence = Math.min(0.95, 0.4 + Math.abs(score))
+  const trendText = ma20 > ma100 ? 'constructive trend' : 'weak trend'
+  const momentumText = mom20 >= 0 ? 'positive 20-day momentum' : 'negative 20-day momentum'
+  const riskFlags = [
+    ...(riskPenalty > 0.18 ? ['Elevated recent volatility'] : []),
+    ...(Math.abs(score) < 0.35 ? ['Signal is below action threshold'] : []),
+    ...(regimeBias < 0 ? ['Market regime is a headwind'] : []),
+  ]
+  const thesis =
+    decision === 'BUY'
+      ? `${symbol} has a constructive trend setup with ${momentumText}; position sizing should respect recent volatility.`
+      : decision === 'SELL'
+      ? `${symbol} has a weak technical setup with ${momentumText}; downside control matters more than adding exposure.`
+      : `${symbol} is mixed: ${trendText}, ${momentumText}, and the score does not clear the action threshold.`
+  const invalidation =
+    decision === 'BUY'
+      ? 'Revisit if price loses the 20-day average or the regime score turns negative.'
+      : decision === 'SELL'
+      ? 'Revisit if price reclaims the 20-day average with improving market regime.'
+      : 'Revisit when trend and momentum align or a catalyst changes the setup.'
+  const nextAction =
+    decision === 'BUY'
+      ? 'Build a watch plan with entry range, max loss, and catalyst checklist.'
+      : decision === 'SELL'
+      ? 'Reduce exposure, avoid new buys, or define a downside hedge before acting.'
+      : 'Wait for confirmation; keep on watchlist.'
 
   const reasons = [
     `MA20 ${ma20 > ma100 ? 'above' : 'below'} MA100`,
@@ -48,7 +102,20 @@ function scoreSeries(closes: number[], regimeBias: number) {
     `Regime bias ${(regimeBias * 100).toFixed(0)} bps`,
   ]
 
-  return { score, decision, confidence, reasons, last }
+  return {
+    score,
+    decision,
+    confidence,
+    reasons,
+    thesis,
+    riskFlags: riskFlags.length ? riskFlags : ['No major rule-based risk flag'],
+    invalidation,
+    nextAction,
+    timeHorizon: 'swing',
+    dataQuality: closes.length < 180 ? 'limited' as const : 'ok' as const,
+    abstained: false,
+    last,
+  }
 }
 
 export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResponse> {
@@ -59,22 +126,24 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
   const prices: PriceMap = {}
   await Promise.all(
     all.map(async (s) => {
-      prices[s] = await fetchCloses(s)
+      prices[s] = await fetchSeries(s)
     })
   )
 
-  const minLen = Math.min(...bench.map((b) => prices[b]?.length ?? 0))
+  const minLen = Math.min(...bench.map((b) => prices[b]?.closes.length ?? 0))
   const regimeSeries = Array.from({ length: minLen }, (_, i) => {
-    const spy = prices.SPY?.[prices.SPY.length - minLen + i] ?? 0
-    const qqq = prices.QQQ?.[prices.QQQ.length - minLen + i] ?? 0
+    const spySeries = prices.SPY?.closes ?? []
+    const qqqSeries = prices.QQQ?.closes ?? []
+    const spy = spySeries[spySeries.length - minLen + i] ?? 0
+    const qqq = qqqSeries[qqqSeries.length - minLen + i] ?? 0
     return (spy + qqq) / 2
   })
 
-  const regime = scoreSeries(regimeSeries, 0)
+  const regime = scoreSeries('MARKET', { closes: regimeSeries, dates: [] }, 0)
   const regimeBias = regime.score > 0 ? 0.1 : -0.1
 
   const signals: SignalRow[] = symbols.map((symbol) => {
-    const s = scoreSeries(prices[symbol] ?? [], regimeBias)
+    const s = scoreSeries(symbol, prices[symbol] ?? { closes: [], dates: [] }, regimeBias)
     return {
       symbol,
       decision: s.decision,
@@ -82,6 +151,14 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
       score: Number(s.score.toFixed(3)),
       lastPrice: Number((s.last ?? 0).toFixed(2)),
       reasons: s.reasons,
+      thesis: s.thesis,
+      riskFlags: s.riskFlags,
+      invalidation: s.invalidation,
+      nextAction: s.nextAction,
+      timeHorizon: s.timeHorizon,
+      dataQuality: s.dataQuality,
+      abstained: s.abstained,
+      source: 'Yahoo daily close, 20/100 trend, 20D momentum, realized volatility, SPY/QQQ regime',
     }
   })
 

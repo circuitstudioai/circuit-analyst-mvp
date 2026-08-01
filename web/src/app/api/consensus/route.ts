@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
     await saveConsensus(result)
 
     return NextResponse.json({ consensus: result, engines: latest })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'consensus failed' }, { status: 500 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'consensus failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -34,6 +34,16 @@ export async function saveRun(payload: AnalyzeResponse) {
     last_price: s.lastPrice,
     reasons: s.reasons,
     ai_explanation: s.aiExplanation || null,
+    raw_payload: {
+      thesis: s.thesis,
+      riskFlags: s.riskFlags,
+      invalidation: s.invalidation,
+      nextAction: s.nextAction,
+      timeHorizon: s.timeHorizon,
+      dataQuality: s.dataQuality,
+      abstained: s.abstained,
+      source: s.source,
+    },
   }))
 
   const { error: sigErr } = await sb.from('signals').insert(rows)
@@ -120,9 +130,9 @@ export async function saveDailyBrief(payload: {
   brief_date: string
   title: string
   summary: string
-  top_conviction: any[]
-  high_conflict: any[]
-  key_catalysts: any[]
+  top_conviction: Array<Record<string, unknown>>
+  high_conflict: Array<Record<string, unknown>>
+  key_catalysts: Array<Record<string, unknown>>
   markdown: string
 }) {
   const sb = client()
