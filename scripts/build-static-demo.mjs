@@ -161,6 +161,26 @@ const html = String.raw`<!doctype html>
 </html>`
 
 writeFileSync(resolve(outDir, 'index.html'), html)
+mkdirSync(resolve(outDir, 'server'), { recursive: true })
+mkdirSync(resolve(outDir, '.openai'), { recursive: true })
+writeFileSync(resolve(outDir, '.openai/hosting.json'), readFileSync(resolve(root, '.openai/hosting.json'), 'utf8'))
+writeFileSync(resolve(outDir, 'server/index.js'), `const html = ${JSON.stringify(html)};
+
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return new Response(html, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        }
+      });
+    }
+    return new Response("Not found", { status: 404 });
+  }
+};
+`)
 writeFileSync(resolve(outDir, '_headers'), `/*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
