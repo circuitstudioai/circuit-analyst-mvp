@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Circuit Market Desk",
-  description: "Decision-support market analysis workspace for watchlist signals, risks, and next actions.",
+  title: "Circuit Market Desk | AI Stock Analyst Demo",
+  description: "No-login AI stock analyst demo with accountable watchlist decisions, risks, invalidation, and research-backed signals.",
 };
 
 export default function RootLayout({

@@ -1,0 +1,120 @@
+{
+  "generated_at": "2026-08-01T12:36:07.088226+00:00",
+  "model": "pead_yahoo",
+  "source_repo": "circuitstudioai/finance-test-harness",
+  "summary": [
+    {
+      "window": "1d",
+      "n_events": 84,
+      "mean_signed_return": -0.0007459075043151,
+      "hit_rate": 0.4880952380952381,
+      "mean_benchmark_adjusted": -0.0015051158171542
+    },
+    {
+      "window": "5d",
+      "n_events": 81,
+      "mean_signed_return": 0.0084831931291851,
+      "hit_rate": 0.4938271604938271,
+      "mean_benchmark_adjusted": 0.0003446947817503
+    },
+    {
+      "window": "20d",
+      "n_events": 81,
+      "mean_signed_return": 0.0416424652300091,
+      "hit_rate": 0.5185185185185185,
+      "mean_benchmark_adjusted": 0.0251159775329182
+    }
+  ],
+  "latest_by_symbol": {
+    "SOFI": {
+      "date": "2026-07-30",
+      "symbol": "SOFI",
+      "decision": "buy",
+      "conviction": 0.501,
+      "confidence": 0.5502,
+      "reasoning": "EPS surprise 10.02% after earnings on 2026-07-29; hold 5 trading days",
+      "signed_return_20d": null,
+      "benchmark_adjusted_20d": null
+    },
+    "OSCR": {
+      "date": "2026-05-07",
+      "symbol": "OSCR",
+      "decision": "buy",
+      "conviction": 1.0,
+      "confidence": 0.95,
+      "reasoning": "EPS surprise 88.18% after earnings on 2026-05-06; hold 5 trading days",
+      "signed_return_20d": 0.1744129968028378,
+      "benchmark_adjusted_20d": 0.1662526171264313
+    },
+    "HOOD": {
+      "date": "2026-07-30",
+      "symbol": "HOOD",
+      "decision": "buy",
+      "conviction": 1.0,
+      "confidence": 0.8871,
+      "reasoning": "EPS surprise 43.71% after earnings on 2026-07-29; hold 5 trading days",
+      "signed_return_20d": null,
+      "benchmark_adjusted_20d": null
+    },
+    "WELL": {
+      "date": "2026-07-28",
+      "symbol": "WELL",
+      "decision": "sell",
+      "conviction": -0.844,
+      "confidence": 0.6188,
+      "reasoning": "EPS surprise -16.88% after earnings on 2026-07-27; hold 5 trading days",
+      "signed_return_20d": null,
+      "benchmark_adjusted_20d": null
+    },
+    "RLAY": {
+      "date": "2026-05-06",
+      "symbol": "RLAY",
+      "decision": "sell",
+      "conviction": -0.7505,
+      "confidence": 0.6001,
+      "reasoning": "EPS surprise -15.01% after earnings on 2026-05-05; hold 5 trading days",
+      "signed_return_20d": -0.1253869873059454,
+      "benchmark_adjusted_20d": -0.1570837143734309
+    },
+    "HIMS": {
+      "date": "2026-05-12",
+      "symbol": "HIMS",
+      "decision": "sell",
+      "conviction": -1.0,
+      "confidence": 0.95,
+      "reasoning": "EPS surprise -244.04% after earnings on 2026-05-11; hold 5 trading days",
+      "signed_return_20d": -0.1098681551961455,
+      "benchmark_adjusted_20d": -0.0925959449946968
+    },
+    "LMND": {
+      "date": "2026-04-30",
+      "symbol": "LMND",
+      "decision": "buy",
+      "conviction": 0.6895,
+      "confidence": 0.5879,
+      "reasoning": "EPS surprise 13.79% after earnings on 2026-04-29; hold 5 trading days",
+      "signed_return_20d": 0.0240113104697545,
+      "benchmark_adjusted_20d": -0.0286144217784678
+    },
+    "ZETA": {
+      "date": "2026-05-04",
+      "symbol": "ZETA",
+      "decision": "buy",
+      "conviction": 1.0,
+      "confidence": 0.8418,
+      "reasoning": "EPS surprise 39.18% after earnings on 2026-05-01; hold 5 trading days",
+      "signed_return_20d": 0.3678223863639651,
+      "benchmark_adjusted_20d": 0.3099401883537174
+    },
+    "AMD": {
+      "date": "2026-05-06",
+      "symbol": "AMD",
+      "decision": "buy",
+      "conviction": 0.291,
+      "confidence": 0.5082,
+      "reasoning": "EPS surprise 5.82% after earnings on 2026-05-05; hold 5 trading days",
+      "signed_return_20d": 0.2416051496700344,
+      "benchmark_adjusted_20d": 0.2099084226025489
+    }
+  }
+}

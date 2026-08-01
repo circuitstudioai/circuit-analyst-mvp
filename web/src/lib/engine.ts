@@ -1,4 +1,5 @@
 import { AnalyzeResponse, Decision, SignalRow } from './types'
+import { evidenceForSymbol, latestResearchEvent } from './researchEvidence'
 
 type PriceSeries = {
   closes: number[]
@@ -39,7 +40,10 @@ function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
       confidence: 0.05,
       reasons: ['Insufficient price history for 100-day trend and 20-day risk checks'],
       thesis: `${symbol} is not actionable because the public price series is too short for the engine checks.`,
+      bullCase: ['Wait for enough data to measure trend and volatility.'],
+      bearCase: ['Data coverage is too thin to support a responsible signal.'],
       riskFlags: ['Data coverage is insufficient'],
+      catalysts: ['More daily closes available'],
       invalidation: 'Wait until at least 110 daily closes are available.',
       nextAction: 'Abstain and collect more history.',
       timeHorizon: 'swing',
@@ -101,14 +105,32 @@ function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
     `Volatility penalty ${(riskPenalty * 100).toFixed(1)} bps`,
     `Regime bias ${(regimeBias * 100).toFixed(0)} bps`,
   ]
+  const bullCase = [
+    ma20 > ma100 ? 'Short trend is above the long trend.' : 'A trend reversal would improve the setup.',
+    mom20 >= 0 ? 'Recent buyers are still defending momentum.' : 'A momentum turn would create a cleaner entry.',
+    regimeBias > 0 ? 'Broad market regime is supportive.' : 'Improvement in SPY/QQQ regime would remove a headwind.',
+  ]
+  const bearCase = [
+    riskPenalty > 0.18 ? 'Recent volatility can overwhelm a small edge.' : 'Low volatility can still mask event risk.',
+    ma20 <= ma100 ? 'Short trend remains below long trend.' : 'A 20-day average break would weaken the signal.',
+    Math.abs(score) < 0.35 ? 'Score is not far enough from neutral to force action.' : 'The signal can decay quickly if momentum fades.',
+  ]
+  const catalysts = [
+    'Next earnings update',
+    '20-day momentum shift',
+    'SPY/QQQ regime change',
+  ]
 
   return {
     score,
     decision,
     confidence,
     reasons,
+    bullCase,
+    bearCase,
     thesis,
     riskFlags: riskFlags.length ? riskFlags : ['No major rule-based risk flag'],
+    catalysts,
     invalidation,
     nextAction,
     timeHorizon: 'swing',
@@ -144,6 +166,15 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
 
   const signals: SignalRow[] = symbols.map((symbol) => {
     const s = scoreSeries(symbol, prices[symbol] ?? { closes: [], dates: [] }, regimeBias)
+    const researchEvent = latestResearchEvent(symbol)
+    const evidence = [
+      {
+        label: 'Rule engine',
+        detail: 'Yahoo daily close, MA20/MA100 trend, 20D momentum, realized volatility, SPY/QQQ regime',
+        strength: 'rule' as const,
+      },
+      ...evidenceForSymbol(symbol),
+    ]
     return {
       symbol,
       decision: s.decision,
@@ -152,13 +183,23 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
       lastPrice: Number((s.last ?? 0).toFixed(2)),
       reasons: s.reasons,
       thesis: s.thesis,
+      bullCase: [
+        ...s.bullCase,
+        ...(researchEvent?.decision === 'buy' ? [`Latest PEAD research signal agrees with upside bias: ${researchEvent.reasoning}`] : []),
+      ],
+      bearCase: [
+        ...s.bearCase,
+        ...(researchEvent?.decision === 'sell' ? [`Latest PEAD research signal disagrees with upside bias: ${researchEvent.reasoning}`] : []),
+      ],
       riskFlags: s.riskFlags,
+      catalysts: s.catalysts,
       invalidation: s.invalidation,
       nextAction: s.nextAction,
       timeHorizon: s.timeHorizon,
       dataQuality: s.dataQuality,
       abstained: s.abstained,
       source: 'Yahoo daily close, 20/100 trend, 20D momentum, realized volatility, SPY/QQQ regime',
+      evidence,
     }
   })
 
@@ -169,5 +210,28 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
     regimeScore: Number(regime.score.toFixed(3)),
     watchlist: symbols,
     signals,
+    pipeline: [
+      {
+        label: 'Public price fetch',
+        status: 'complete',
+        detail: `${symbols.length} watchlist symbols plus SPY/QQQ benchmark data`,
+      },
+      {
+        label: 'Rule scoring',
+        status: 'complete',
+        detail: 'Trend, momentum, volatility, and market-regime checks produced ranked decisions',
+      },
+      {
+        label: 'Research evidence',
+        status: 'complete',
+        detail: 'PEAD event-study outputs from finance-test-harness are matched by ticker where available',
+      },
+      {
+        label: 'AI summary',
+        status: process.env.GEMINI_API_KEY ? 'complete' : 'fallback',
+        detail: process.env.GEMINI_API_KEY ? 'Gemini generated analyst notes server-side' : 'Gemini key absent; rule-based report remains usable',
+      },
+    ],
+    shareId: Buffer.from(`${symbols.join(',')}|${Date.now()}`).toString('base64url').slice(0, 16),
   }
 }
