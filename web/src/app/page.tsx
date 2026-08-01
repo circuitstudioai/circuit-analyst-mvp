@@ -1,88 +1,67 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import styles from './page.module.css'
+import { AnalyzeResponse, PipelineStep, SignalRow } from '@/lib/types'
 
-type Signal = {
-  symbol: string
-  decision: 'BUY' | 'HOLD' | 'SELL'
-  confidence: number
-  score: number
-  lastPrice: number
-  reasons: string[]
-  thesis: string
-  riskFlags: string[]
-  invalidation: string
-  nextAction: string
-  timeHorizon: string
-  dataQuality: 'ok' | 'limited' | 'insufficient'
-  abstained: boolean
-  source: string
-  aiExplanation?: string
+const samples = [
+  ['NVDA'],
+  ['AMD'],
+  ['SOFI'],
+  ['HIMS', 'HOOD', 'SOFI', 'AMD'],
+  ['LMND', 'OSCR', 'WELL', 'ZETA'],
+]
+
+function cardClass(decision: SignalRow['decision']) {
+  if (decision === 'BUY') return `${styles.report} ${styles.reportBuy}`
+  if (decision === 'SELL') return `${styles.report} ${styles.reportSell}`
+  return styles.report
 }
 
-type Consensus = {
-  ticker: string
-  direction: 'bullish' | 'neutral' | 'bearish'
-  agreement_score: number
-  confidence_score: number
-  freshness_score: number
-  conflict_flag: boolean
-  rationale: string
+function verdict(signal: SignalRow) {
+  if (signal.abstained) return 'Abstain'
+  if (signal.decision === 'BUY') return 'Bullish'
+  if (signal.decision === 'SELL') return 'Bearish'
+  return 'Neutral'
 }
 
-function cardClass(decision: Signal['decision']) {
-  if (decision === 'BUY') return `${styles.signalCard} ${styles.signalCardBuy}`
-  if (decision === 'SELL') return `${styles.signalCard} ${styles.signalCardSell}`
-  return styles.signalCard
+function pct(value: number) {
+  return `${(value * 100).toFixed(0)}%`
+}
+
+function formatList(items: string[]) {
+  return items.length ? items : ['No major item flagged.']
 }
 
 export default function HomePage() {
-  const [watchlistText, setWatchlistText] = useState('AMD,SOFI,HIMS,HOOD,LMND,OSCR,WELL,ZETA,RLAY')
+  const [watchlistText, setWatchlistText] = useState(() => {
+    if (typeof window === 'undefined') return 'NVDA, AMD, SOFI, HIMS'
+    return new URLSearchParams(window.location.search).get('tickers') || 'NVDA, AMD, SOFI, HIMS'
+  })
   const [loading, setLoading] = useState(false)
-  const [asOf, setAsOf] = useState<string>('')
-  const [regime, setRegime] = useState<number | null>(null)
-  const [signals, setSignals] = useState<Signal[]>([])
-  const [consensus, setConsensus] = useState<Consensus[]>([])
-  const [brief, setBrief] = useState<string>('')
+  const [result, setResult] = useState<AnalyzeResponse | null>(null)
   const [error, setError] = useState<string>('')
 
-  async function refreshBrief() {
-    const res = await fetch('/api/brief/latest')
-    const data = await res.json()
-    setBrief(data?.brief?.markdown || '')
-  }
+  const watchlist = useMemo(
+    () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
+    [watchlistText]
+  )
 
-  async function onAnalyze() {
+  async function runAnalysis(symbols = watchlist) {
     setLoading(true)
     setError('')
     try {
-      const watchlist = watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ watchlist }),
+        body: JSON.stringify({ watchlist: symbols }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
-      setAsOf(data.asOf)
-      setRegime(data.regimeScore)
-      setSignals(data.signals || [])
-
-      const c: Consensus[] = []
-      for (const s of watchlist) {
-        const cr = await fetch('/api/consensus', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ticker: s }),
-        })
-        if (cr.ok) {
-          const cj = await cr.json()
-          if (cj?.consensus) c.push(cj.consensus)
-        }
-      }
-      setConsensus(c)
-      await refreshBrief()
+      setResult(data)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tickers', symbols.join(','))
+      window.history.replaceState(null, '', url)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed')
     } finally {
@@ -90,122 +69,174 @@ export default function HomePage() {
     }
   }
 
+  function loadSample(symbols: string[]) {
+    setWatchlistText(symbols.join(', '))
+    void runAnalysis(symbols)
+  }
+
+  function copyReport() {
+    if (!result) return
+    const lines = result.signals.map((s) => {
+      return `${s.symbol}: ${verdict(s)} / ${pct(s.confidence)} confidence\n${s.thesis}\nInvalidation: ${s.invalidation}\nNext: ${s.nextAction}`
+    })
+    void navigator.clipboard.writeText(lines.join('\n\n'))
+  }
+
   return (
     <main className={styles.desk}>
-      <div className={styles.shell}>
-        <header className={styles.topbar}>
-          <div>
-            <div className={styles.eyebrow}>Circuit Studio AI</div>
-            <h1 className={styles.title}>Market Desk</h1>
-            <p className={styles.subtitle}>
-              A watchlist analyst workspace for accountable decision-support: ranked signals,
-              evidence, risk flags, invalidation, and next actions from public market data.
-            </p>
-          </div>
-          <div className={styles.stamp}>
-            <span className={styles.stampLabel}>Mode</span>
-            <span className={styles.stampValue}>Decision support only</span>
-            <span className={styles.stampLabel}>Data</span>
-            <span className={styles.stampValue}>Free public market feed</span>
-          </div>
-        </header>
-
-        <section className={styles.controlPanel}>
-          <div>
-            <label className={styles.label}>Watchlist</label>
-            <textarea
-              value={watchlistText}
-              onChange={(e) => setWatchlistText(e.target.value)}
-              rows={2}
-              className={styles.textarea}
-            />
-          </div>
-          <button onClick={onAnalyze} disabled={loading} className={styles.button}>
-            {loading ? 'Analyzing' : 'Run Analysis'}
-          </button>
-        </section>
-
-        <div className={styles.statusLine}>
-          {asOf && <span className={styles.pill}>As of {new Date(asOf).toLocaleString()}</span>}
-          {regime !== null && <span className={styles.pill}>Regime score {regime}</span>}
-          {signals.length > 0 && <span className={styles.pill}>{signals.length} symbols scored</span>}
+      <section className={styles.hero}>
+        <div className={styles.heroCopy}>
+          <p className={styles.kicker}>Circuit Studio AI</p>
+          <h1>Circuit Market Desk</h1>
+          <p>
+            A public no-login AI stock analyst demo that turns a watchlist into decisions,
+            thesis, risk, invalidation, next actions, and research-backed evidence.
+          </p>
         </div>
-        {error && <p className={styles.error}>{error}</p>}
 
-        <div className={styles.grid}>
-          <section>
-            <h2 className={styles.sectionTitle}>Signal Board</h2>
-            {signals.length === 0 ? (
-              <p className={styles.empty}>Run analysis to generate ranked signal cards.</p>
-            ) : (
-              <div className={styles.signalGrid}>
-                {signals.map((s) => (
-                  <article key={s.symbol} className={cardClass(s.decision)}>
-                    <div className={styles.cardHeader}>
-                      <h3 className={styles.symbol}>{s.symbol}</h3>
-                      <span className={styles.decision}>{s.abstained ? 'ABSTAIN' : s.decision}</span>
-                    </div>
-                    <div className={styles.metrics}>
-                      <div className={styles.metric}>
-                        <span>Price</span>
-                        <strong>${s.lastPrice}</strong>
-                      </div>
-                      <div className={styles.metric}>
-                        <span>Confidence</span>
-                        <strong>{(s.confidence * 100).toFixed(0)}%</strong>
-                      </div>
-                      <div className={styles.metric}>
-                        <span>Score</span>
-                        <strong>{s.score}</strong>
-                      </div>
-                    </div>
-                    <p className={styles.thesis}>{s.thesis}</p>
-                    <ul className={styles.list}>
-                      <li>{s.nextAction}</li>
-                      <li>{s.invalidation}</li>
-                      <li>Data quality: {s.dataQuality}</li>
-                    </ul>
-                    <ul className={styles.list}>
-                      {s.riskFlags.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                    {s.aiExplanation && <div className={styles.note}>{s.aiExplanation}</div>}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+        <div className={styles.console}>
+          <div className={styles.consoleTop}>
+            <span>Public demo</span>
+            <span>No account required</span>
+          </div>
+          <label className={styles.label}>Ticker or watchlist</label>
+          <textarea
+            value={watchlistText}
+            onChange={(e) => setWatchlistText(e.target.value)}
+            rows={2}
+            className={styles.textarea}
+            aria-label="Ticker watchlist"
+          />
+          <div className={styles.sampleRow}>
+            {samples.map((symbols) => (
+              <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
+                {symbols.length === 1 ? symbols[0] : `${symbols.length} names`}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => runAnalysis()} disabled={loading} className={styles.button}>
+            {loading ? 'Analyzing...' : 'Run analysis'}
+          </button>
+          {error && <p className={styles.error}>{error}</p>}
+        </div>
+      </section>
 
-          <aside className={styles.side}>
-            <section className={styles.panel}>
-              <h2 className={styles.sectionTitle}>Consensus</h2>
-              {consensus.length === 0 ? (
-                <p className={styles.empty}>Consensus appears when external engine outputs are ingested.</p>
-              ) : (
-                <div>
-                  {consensus.map((c) => (
-                    <p key={c.ticker} className={styles.empty}>
-                      <strong>{c.ticker}</strong> {c.direction}; confidence {(c.confidence_score * 100).toFixed(0)}%;
-                      agreement {(c.agreement_score * 100).toFixed(0)}%{c.conflict_flag ? '; conflict flagged' : ''}.
-                    </p>
+      <section className={styles.band}>
+        <div className={styles.pipeline}>
+          {(result?.pipeline || fallbackPipeline()).map((step) => (
+            <PipelineItem key={step.label} step={step} />
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.results}>
+        <div className={styles.resultHeader}>
+          <div>
+            <p className={styles.kicker}>Analyst report</p>
+            <h2>{result ? `${result.signals.length} symbols scored` : 'Run a watchlist to generate the desk'}</h2>
+          </div>
+          <div className={styles.actions}>
+            {result?.asOf && <span className={styles.meta}>As of {new Date(result.asOf).toLocaleString()}</span>}
+            {result && <span className={styles.meta}>Regime {result.regimeScore}</span>}
+            {result && <button onClick={copyReport} className={styles.secondaryButton}>Copy report</button>}
+          </div>
+        </div>
+
+        {!result ? (
+          <div className={styles.empty}>
+            <strong>Try NVDA, AMD, SOFI, or your own watchlist.</strong>
+            <span>The first useful screen is the tool itself: no login, no credits, no setup.</span>
+          </div>
+        ) : (
+          <div className={styles.reportGrid}>
+            {result.signals.map((signal) => (
+              <article key={signal.symbol} className={cardClass(signal.decision)}>
+                <div className={styles.cardHeader}>
+                  <div>
+                    <span className={styles.symbol}>{signal.symbol}</span>
+                    <h3>{verdict(signal)}</h3>
+                  </div>
+                  <span className={styles.score}>{pct(signal.confidence)}</span>
+                </div>
+
+                <div className={styles.metrics}>
+                  <span>${signal.lastPrice}</span>
+                  <span>Score {signal.score}</span>
+                  <span>{signal.dataQuality}</span>
+                </div>
+
+                <p className={styles.thesis}>{signal.thesis}</p>
+
+                <div className={styles.twoCol}>
+                  <ListBlock title="Bull case" items={formatList(signal.bullCase)} />
+                  <ListBlock title="Bear case" items={formatList(signal.bearCase)} />
+                </div>
+
+                <ListBlock title="Risk flags" items={formatList(signal.riskFlags)} />
+                <ListBlock title="Catalysts" items={formatList(signal.catalysts)} />
+
+                <div className={styles.callout}>
+                  <strong>Invalidation</strong>
+                  <span>{signal.invalidation}</span>
+                </div>
+                <div className={styles.callout}>
+                  <strong>Next action</strong>
+                  <span>{signal.nextAction}</span>
+                </div>
+
+                <div className={styles.evidence}>
+                  {signal.evidence.map((item) => (
+                    <span key={`${item.label}-${item.detail}`} className={`${styles.badge} ${styles[item.strength]}`}>
+                      <strong>{item.label}</strong>
+                      {item.detail}
+                    </span>
                   ))}
                 </div>
-              )}
-            </section>
 
-            <section className={styles.panel}>
-              <h2 className={styles.sectionTitle}>Daily Brief</h2>
-              {brief ? <pre className={styles.brief}>{brief}</pre> : <p className={styles.empty}>No stored brief yet.</p>}
-            </section>
-          </aside>
-        </div>
+                {signal.aiExplanation && <pre className={styles.aiNote}>{signal.aiExplanation}</pre>}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
-        <p className={styles.disclaimer}>
-          Educational decision-support only. This app does not provide personalized financial advice,
-          execute trades, or know your objectives, risk tolerance, tax situation, or portfolio.
-        </p>
-      </div>
+      <footer className={styles.footer}>
+        <strong>Built by Circuit Studio AI.</strong>
+        <span>Educational decision-support only. Not personalized financial advice.</span>
+        <a href="https://circuitstudio.ai">Work with us</a>
+      </footer>
     </main>
   )
+}
+
+function PipelineItem({ step }: { step: PipelineStep }) {
+  return (
+    <div className={`${styles.pipelineItem} ${styles[step.status]}`}>
+      <span>{step.status}</span>
+      <strong>{step.label}</strong>
+      <p>{step.detail}</p>
+    </div>
+  )
+}
+
+function ListBlock({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className={styles.listBlock}>
+      <strong>{title}</strong>
+      <ul>
+        {items.map((item, index) => (
+          <li key={`${title}-${index}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function fallbackPipeline(): PipelineStep[] {
+  return [
+    { label: 'Public price fetch', status: 'skipped', detail: 'Waiting for a watchlist.' },
+    { label: 'Rule scoring', status: 'skipped', detail: 'Trend, momentum, risk, and regime checks.' },
+    { label: 'Research evidence', status: 'skipped', detail: 'PEAD harness evidence appears when tickers match.' },
+    { label: 'AI summary', status: 'skipped', detail: 'Optional Gemini server enrichment.' },
+  ]
 }

@@ -77,8 +77,52 @@ create table if not exists daily_briefs (
   unique(brief_date)
 );
 
+-- SaaS-ready tables for the later account layer.
+-- The public demo does not require auth, but these keep the data model ready
+-- for saved watchlists, reports, refreshes, and provider-cost controls.
+create table if not exists profiles (
+  id uuid primary key,
+  email text,
+  display_name text,
+  plan text not null default 'free',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists user_watchlists (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete cascade,
+  name text not null default 'Watchlist',
+  symbols text[] not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists saved_reports (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete cascade,
+  run_id bigint references analysis_runs(id) on delete set null,
+  title text not null,
+  symbols text[] not null,
+  report_payload jsonb not null,
+  reminder_date date,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists provider_usage (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete set null,
+  provider text not null,
+  route text not null,
+  units int not null default 1,
+  cost_usd numeric(10, 4) not null default 0,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_signals_run_id on signals(run_id);
 create index if not exists idx_engine_outputs_ticker_ts on engine_outputs(ticker, run_timestamp desc);
 create index if not exists idx_engine_outputs_engine on engine_outputs(engine_name);
 create index if not exists idx_consensus_ticker_created on consensus_signals(ticker, created_at desc);
 create index if not exists idx_daily_briefs_date on daily_briefs(brief_date desc);
+create index if not exists idx_user_watchlists_user on user_watchlists(user_id);
+create index if not exists idx_saved_reports_user on saved_reports(user_id, created_at desc);
+create index if not exists idx_provider_usage_created on provider_usage(created_at desc);
