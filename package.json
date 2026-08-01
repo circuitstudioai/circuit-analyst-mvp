@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npm --prefix web run build",
+    "build": "npm --prefix web run build && node scripts/build-static-demo.mjs",
     "start": "npm --prefix web run start",
     "lint": "npm --prefix web run lint"
   },
