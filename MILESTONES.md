@@ -14,10 +14,10 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] "Why different" messaging section
 
 ## Milestone 2 — Data + Scoring Engine
-- [ ] Market data fetch via Yahoo chart endpoint (server-side)
-- [ ] Deterministic signal scoring (trend + momentum + volatility + regime)
-- [ ] Regime score visible in UI
-- [ ] Daily diff support scaffold (latest vs prior run)
+- [x] Market data fetch via Yahoo chart endpoint (server-side)
+- [x] Deterministic signal scoring (trend + momentum + volatility + regime)
+- [x] Regime score visible in UI
+- [x] Daily diff support scaffold (latest vs prior run)
 
 ## Milestone 3 — Gemini AI Layer (Done w/ fallback)
 - [x] Integrate Gemini API for concise explanation per symbol
@@ -28,7 +28,7 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] Add Supabase client wiring (server)
 - [x] Persist analysis runs and signal rows
 - [x] Add SQL schema + setup docs
-- [ ] Render recent runs from Supabase
+- [x] Render recent runs from Supabase
 
 ## Milestone 5 — Deploy & Validate (Done)
 - [x] Vercel project deployment
@@ -37,10 +37,10 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] Shareable URL + launch checklist
 
 ## Milestone 6 — Viral Hooks (Post-Deploy fast follow)
-- [ ] Share-ready report block
-- [ ] Daily "Top setups" summary card
-- [ ] Public demo watchlist preset
-- [ ] Built-by-Circuit signature branding
+- [x] Share-ready report block
+- [x] Daily "Top setups" summary card
+- [x] Public demo watchlist preset
+- [x] Built-by-Circuit signature branding
 
 ## Deliverables
 1. Live app URL (Vercel): https://web-lime-kappa-15.vercel.app
@@ -50,7 +50,7 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 
 ## Risks / Blockers
 - Vercel auth or deployment permissions
-- Supabase project credentials
-- Gemini API key availability
+- Supabase project credentials are not currently present in local or Vercel env
+- Gemini API key is not currently present in local or Vercel env
 
 If any blocker occurs, pause only for credentials/approval and continue immediately after.

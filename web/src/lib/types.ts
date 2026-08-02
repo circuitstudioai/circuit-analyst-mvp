@@ -29,6 +29,19 @@ export type AnalyzeResponse = {
   signals: SignalRow[]
   pipeline: PipelineStep[]
   shareId: string
+  saved?: {
+    ok?: boolean
+    skipped?: boolean
+    error?: string
+    runId?: number
+  }
+}
+
+export type RecentRun = {
+  id: number
+  as_of: string
+  regime_score: number
+  created_at: string
 }
 
 export type EvidenceBadge = {

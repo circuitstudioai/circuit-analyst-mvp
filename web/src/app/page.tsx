@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import styles from './page.module.css'
-import { AnalyzeResponse, PipelineStep, SignalRow } from '@/lib/types'
+import { AnalyzeResponse, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 
 const samples = [
   ['NVDA'],
@@ -40,12 +40,55 @@ export default function HomePage() {
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
+  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
   const [error, setError] = useState<string>('')
 
   const watchlist = useMemo(
     () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
     [watchlistText]
   )
+
+  const topSetups = useMemo(() => {
+    if (!result) return []
+    const rank = { BUY: 0, HOLD: 1, SELL: 2 }
+    return [...result.signals]
+      .sort((a, b) => rank[a.decision] - rank[b.decision] || b.confidence - a.confidence)
+      .slice(0, 3)
+  }, [result])
+
+  const previousRun = useMemo(() => {
+    if (!result) return recentRuns[0]
+    const current = new Date(result.asOf).getTime()
+    return recentRuns.find((run) => Math.abs(new Date(run.as_of).getTime() - current) > 1000)
+  }, [recentRuns, result])
+
+  async function fetchRecentRuns() {
+    try {
+      const res = await fetch('/api/runs', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      setRecentRuns(Array.isArray(data?.runs) ? data.runs : [])
+    } catch {
+      setRecentRuns([])
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetch('/api/runs', { cache: 'no-store' })
+      .then((res) => res.ok ? res.json() : { runs: [] })
+      .then((data) => {
+        if (!cancelled) setRecentRuns(Array.isArray(data?.runs) ? data.runs : [])
+      })
+      .catch(() => {
+        if (!cancelled) setRecentRuns([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function runAnalysis(symbols = watchlist) {
     setLoading(true)
@@ -59,6 +102,7 @@ export default function HomePage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
       setResult(data)
+      void fetchRecentRuns()
       const url = new URL(window.location.href)
       url.searchParams.set('tickers', symbols.join(','))
       window.history.replaceState(null, '', url)
@@ -126,6 +170,55 @@ export default function HomePage() {
           {(result?.pipeline || fallbackPipeline()).map((step) => (
             <PipelineItem key={step.label} step={step} />
           ))}
+        </div>
+      </section>
+
+      <section className={styles.ops}>
+        <div className={styles.topSetups}>
+          <div className={styles.panelHeader}>
+            <p className={styles.kicker}>Top setups</p>
+            <strong>{result ? `${topSetups.length} ranked` : 'Awaiting run'}</strong>
+          </div>
+          <div className={styles.setupGrid}>
+            {(topSetups.length ? topSetups : placeholderSetups()).map((signal) => (
+              <div key={signal.symbol} className={styles.setupTile}>
+                <span>{signal.symbol}</span>
+                <strong>{signal.decision}</strong>
+                <small>{pct(signal.confidence)}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.runLedger}>
+          <div className={styles.panelHeader}>
+            <p className={styles.kicker}>Run ledger</p>
+            <strong>{recentRuns.length ? `${recentRuns.length} stored` : 'Storage idle'}</strong>
+          </div>
+          {recentRuns.length ? (
+            <ol>
+              {recentRuns.slice(0, 4).map((run) => (
+                <li key={run.id}>
+                  <span>{new Date(run.as_of).toLocaleString()}</span>
+                  <strong>Regime {Number(run.regime_score).toFixed(3)}</strong>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>Supabase is not connected on this deployment.</p>
+          )}
+        </div>
+
+        <div className={styles.diffPanel}>
+          <div className={styles.panelHeader}>
+            <p className={styles.kicker}>Daily diff</p>
+            <strong>{previousRun && result ? regimeDelta(result.regimeScore, previousRun.regime_score) : 'Pending'}</strong>
+          </div>
+          <p>
+            {previousRun && result
+              ? `Prior run ${new Date(previousRun.as_of).toLocaleDateString()} at regime ${Number(previousRun.regime_score).toFixed(3)}.`
+              : 'Diffs appear after Supabase has at least two saved runs.'}
+          </p>
         </div>
       </section>
 
@@ -238,5 +331,20 @@ function fallbackPipeline(): PipelineStep[] {
     { label: 'Rule scoring', status: 'skipped', detail: 'Trend, momentum, risk, and regime checks.' },
     { label: 'Research evidence', status: 'skipped', detail: 'PEAD harness evidence appears when tickers match.' },
     { label: 'AI summary', status: 'skipped', detail: 'Optional Gemini server enrichment.' },
+    { label: 'Persistence', status: 'skipped', detail: 'Supabase status appears after analysis.' },
   ]
+}
+
+function placeholderSetups(): Pick<SignalRow, 'symbol' | 'decision' | 'confidence'>[] {
+  return [
+    { symbol: 'NVDA', decision: 'HOLD', confidence: 0 },
+    { symbol: 'AMD', decision: 'HOLD', confidence: 0 },
+    { symbol: 'SOFI', decision: 'HOLD', confidence: 0 },
+  ]
+}
+
+function regimeDelta(current: number, prior: number) {
+  const delta = current - Number(prior)
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${delta.toFixed(3)}`
 }

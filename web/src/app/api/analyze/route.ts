@@ -65,11 +65,22 @@ export async function POST(req: NextRequest) {
 
     const base = await analyzeWatchlist(watchlist)
     const signals = await enrichWithGemini(base.signals, base.regimeScore)
-    const payload = { ...base, signals }
+    const draft = { ...base, signals }
 
-    const saved = await saveRun(payload)
-    responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload: { ...payload, saved } })
-    return NextResponse.json({ ...payload, saved })
+    const saved = await saveRun(draft)
+    const persistenceStep = {
+      label: 'Persistence',
+      status: saved.ok ? 'complete' as const : saved.error ? 'fallback' as const : 'skipped' as const,
+      detail: saved.ok
+        ? `Supabase saved run ${saved.runId}`
+        : saved.error
+          ? `Supabase save failed: ${saved.error}`
+          : 'Supabase env absent; analysis remains live but not stored',
+    }
+    const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], saved }
+
+    responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload })
+    return NextResponse.json(payload)
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Analyze failed'
     return NextResponse.json({ error: message }, { status: 500 })
