@@ -18,6 +18,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `GEMINI_API_KEY`: adds concise analyst notes to each signal.
 - `GEMINI_MODEL`: overrides the Gemini model.
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
+- `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
 
 ## Validation
 
@@ -30,6 +31,27 @@ npm run lint
 
 The default analysis uses Yahoo's public chart endpoint and requires no API key.
 Paid/hosted data adapters can be added later behind the same signal shape.
+
+Market data now sits behind `src/lib/marketData.ts`, so Yahoo can be swapped for
+a paid provider without changing the analysis API. If Yahoo is unavailable, the
+engine marks the price-fetch pipeline step as `fallback` and uses deterministic
+series only to keep the demo responsive.
+
+## Batch refresh
+
+The protected refresh endpoint is the first scheduled-job spine:
+
+```bash
+curl -X POST "$APP_URL/api/jobs/refresh" \
+  -H "authorization: Bearer $CIRCUIT_JOB_SECRET" \
+  -H "content-type: application/json" \
+  -d '{"watchlist":["AMD","SOFI","HOOD"]}'
+```
+
+It runs the server-side analyst engine, optionally enriches with Gemini, saves
+the run to Supabase when configured, emits `circuit_rule_engine` rows into
+`engine_outputs`, and writes consensus rows. `/api/engines/ingest` and
+`/api/consensus` use the same bearer-secret guard for external harness jobs.
 
 ## Deploy on Vercel
 

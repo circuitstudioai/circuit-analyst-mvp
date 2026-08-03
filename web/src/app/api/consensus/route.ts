@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { computeConsensus, EngineOutput } from '@/lib/consensus'
+import { verifyJobRequest } from '@/lib/jobAuth'
 import { latestEngineOutputsByTicker, saveConsensus } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   try {
+    const unauthorized = verifyJobRequest(req)
+    if (unauthorized) return unauthorized
+
     const body = await req.json()
     const ticker = (body?.ticker || '').toString().toUpperCase()
     if (!ticker) return NextResponse.json({ error: 'ticker required' }, { status: 400 })

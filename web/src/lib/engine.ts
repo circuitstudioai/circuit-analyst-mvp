@@ -1,56 +1,8 @@
 import { AnalyzeResponse, Decision, SignalRow } from './types'
+import { fetchYahooDailySeries, PriceSeries } from './marketData'
 import { evidenceForSymbol, latestResearchEvent } from './researchEvidence'
 
-type PriceSeries = {
-  closes: number[]
-  dates: string[]
-}
-
 type PriceMap = Record<string, PriceSeries>
-
-async function fetchSeries(symbol: string): Promise<PriceSeries> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) return fallbackSeries(symbol)
-  const json = await res.json()
-  const result = json?.chart?.result?.[0]
-  const timestamps: number[] = result?.timestamp ?? []
-  const closesRaw: Array<number | null> = result?.indicators?.quote?.[0]?.close ?? []
-  const closes: number[] = []
-  const dates: string[] = []
-  closesRaw.forEach((close, i) => {
-    if (typeof close === 'number') {
-      closes.push(close)
-      dates.push(new Date((timestamps[i] || 0) * 1000).toISOString().slice(0, 10))
-    }
-  })
-  return { closes, dates }
-}
-
-function seeded(symbol: string) {
-  let seed = 0
-  for (const char of symbol) seed = (seed * 31 + char.charCodeAt(0)) >>> 0
-  return () => {
-    seed = (1664525 * seed + 1013904223) >>> 0
-    return seed / 4294967296
-  }
-}
-
-function fallbackSeries(symbol: string): PriceSeries {
-  const rand = seeded(symbol)
-  const dates: string[] = []
-  const closes: number[] = []
-  let price = 30 + rand() * 220
-  const drift = (rand() - 0.45) * 0.002
-  for (let i = 252; i >= 0; i--) {
-    const date = new Date(Date.now() - i * 86400000)
-    const shock = (rand() - 0.5) * 0.045
-    price = Math.max(2, price * (1 + drift + shock))
-    closes.push(Number(price.toFixed(2)))
-    dates.push(date.toISOString().slice(0, 10))
-  }
-  return { closes, dates }
-}
 
 function mean(values: number[]) {
   return values.reduce((a, b) => a + b, 0) / values.length
@@ -173,7 +125,7 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
   const prices: PriceMap = {}
   await Promise.all(
     all.map(async (s) => {
-      prices[s] = await fetchSeries(s)
+      prices[s] = await fetchYahooDailySeries(s)
     })
   )
 
@@ -186,11 +138,27 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
     return (spy + qqq) / 2
   })
 
-  const regime = scoreSeries('MARKET', { closes: regimeSeries, dates: [] }, 0)
+  const regime = scoreSeries('MARKET', {
+    closes: regimeSeries,
+    dates: [],
+    provider: 'derived',
+    status: 'live',
+    detail: 'SPY/QQQ blended regime series',
+  }, 0)
   const regimeBias = regime.score > 0 ? 0.1 : -0.1
+  const providerRows = Object.entries(prices)
+  const fallbackSymbols = providerRows
+    .filter(([, series]) => series.status === 'fallback')
+    .map(([symbol]) => symbol)
 
   const signals: SignalRow[] = symbols.map((symbol) => {
-    const s = scoreSeries(symbol, prices[symbol] ?? { closes: [], dates: [] }, regimeBias)
+    const s = scoreSeries(symbol, prices[symbol] ?? {
+      closes: [],
+      dates: [],
+      provider: 'missing',
+      status: 'fallback',
+      detail: 'No provider series available',
+    }, regimeBias)
     const researchEvent = latestResearchEvent(symbol)
     const evidence = [
       {
@@ -238,8 +206,10 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
     pipeline: [
       {
         label: 'Public price fetch',
-        status: 'complete',
-        detail: `${symbols.length} watchlist symbols plus SPY/QQQ benchmark data`,
+        status: fallbackSymbols.length ? 'fallback' : 'complete',
+        detail: fallbackSymbols.length
+          ? `Live Yahoo data used where available; fallback series used for ${fallbackSymbols.join(', ')}`
+          : `${symbols.length} watchlist symbols plus SPY/QQQ benchmark data from Yahoo chart`,
       },
       {
         label: 'Rule scoring',
