@@ -19,6 +19,7 @@ export async function saveRun(payload: AnalyzeResponse) {
       as_of: payload.asOf,
       regime_score: payload.regimeScore,
       watchlist: payload.watchlist,
+      status: 'running',
     })
     .select('id')
     .single()
@@ -34,22 +35,33 @@ export async function saveRun(payload: AnalyzeResponse) {
     last_price: s.lastPrice,
     reasons: s.reasons,
     ai_explanation: s.aiExplanation || null,
-    raw_payload: {
-      thesis: s.thesis,
-      riskFlags: s.riskFlags,
-      invalidation: s.invalidation,
-      nextAction: s.nextAction,
-      timeHorizon: s.timeHorizon,
-      dataQuality: s.dataQuality,
-      abstained: s.abstained,
-      source: s.source,
-    },
   }))
 
   const { error: sigErr } = await sb.from('signals').insert(rows)
-  if (sigErr) return { error: sigErr.message }
+  if (sigErr) {
+    await completeRun(Number(run.id), 'failed', sigErr.message)
+    return { error: sigErr.message }
+  }
 
-  return { ok: true, runId: run.id }
+  return { ok: true, runId: Number(run.id) }
+}
+
+export async function completeRun(
+  runId: number,
+  status: 'completed' | 'partial' | 'failed' = 'completed',
+  errorMessage?: string,
+) {
+  const sb = client()
+  if (!sb) return { skipped: true }
+  const { error } = await sb
+    .from('analysis_runs')
+    .update({
+      status,
+      completed_at: new Date().toISOString(),
+      error_message: errorMessage || null,
+    })
+    .eq('id', runId)
+  return error ? { error: error.message } : { ok: true }
 }
 
 export async function recentRuns(limit = 10) {
@@ -57,7 +69,7 @@ export async function recentRuns(limit = 10) {
   if (!sb) return []
   const { data } = await sb
     .from('analysis_runs')
-    .select('id, as_of, regime_score, created_at')
+    .select('id, as_of, regime_score, status, completed_at, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
   return data || []
@@ -69,6 +81,7 @@ export async function ingestEngineOutputs(rows: EngineOutput[]) {
   if (!rows.length) return { ok: true, inserted: 0 }
 
   const payload = rows.map((r) => ({
+    run_id: r.run_id,
     ticker: r.ticker,
     market: r.market,
     run_timestamp: r.run_timestamp,
@@ -87,18 +100,21 @@ export async function ingestEngineOutputs(rows: EngineOutput[]) {
     source_tag: r.source_tag || null,
   }))
 
-  const { error } = await sb.from('engine_outputs').insert(payload)
+  const { error } = await sb
+    .from('engine_outputs')
+    .upsert(payload, { onConflict: 'run_id,engine_name,ticker,time_horizon' })
   if (error) return { error: error.message }
   return { ok: true, inserted: payload.length }
 }
 
-export async function latestEngineOutputsByTicker(ticker: string) {
+export async function latestEngineOutputsByTicker(ticker: string, runId: number) {
   const sb = client()
   if (!sb) return []
   const { data } = await sb
     .from('engine_outputs')
     .select('*')
     .eq('ticker', ticker.toUpperCase())
+    .eq('run_id', runId)
     .order('run_timestamp', { ascending: false })
     .limit(20)
   return data || []
@@ -107,17 +123,20 @@ export async function latestEngineOutputsByTicker(ticker: string) {
 export async function saveConsensus(result: ConsensusResult) {
   const sb = client()
   if (!sb) return { skipped: true }
-  const { error } = await sb.from('consensus_signals').insert(result)
+  const { error } = await sb
+    .from('consensus_signals')
+    .upsert(result, { onConflict: 'run_id,ticker,time_horizon' })
   if (error) return { error: error.message }
   return { ok: true }
 }
 
-export async function latestConsensus(ticker?: string) {
+export async function latestConsensus(runId: number, ticker?: string) {
   const sb = client()
   if (!sb) return []
   let q = sb
     .from('consensus_signals')
     .select('*')
+    .eq('run_id', runId)
     .order('created_at', { ascending: false })
     .limit(50)
   if (ticker) q = q.eq('ticker', ticker.toUpperCase())
@@ -138,19 +157,123 @@ export async function saveDailyBrief(payload: {
   const sb = client()
   if (!sb) return { skipped: true }
 
-  const { error } = await sb.from('daily_briefs').upsert(payload, { onConflict: 'brief_date' })
+  const { error } = await sb.from('daily_briefs').upsert(payload, { onConflict: 'run_id' })
   if (error) return { error: error.message }
   return { ok: true }
 }
 
-export async function latestDailyBrief() {
+export async function latestDailyBrief(runId?: number) {
   const sb = client()
   if (!sb) return null
-  const { data } = await sb
+  let query = sb
     .from('daily_briefs')
     .select('*')
     .order('brief_date', { ascending: false })
     .limit(1)
-    .single()
+  if (runId) query = query.eq('run_id', runId)
+  const { data } = await query.maybeSingle()
   return data || null
+}
+
+export async function latestCompletedRun() {
+  const sb = client()
+  if (!sb) return null
+  const { data } = await sb
+    .from('analysis_runs')
+    .select('id, as_of, regime_score, status, completed_at, created_at')
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data || null
+}
+
+export type ConsensusDiffRow = {
+  ticker: string
+  latest_created_at: string
+  previous_created_at: string | null
+  latest_direction: 'bullish' | 'neutral' | 'bearish'
+  previous_direction: 'bullish' | 'neutral' | 'bearish' | null
+  latest_confidence: number
+  previous_confidence: number | null
+  latest_agreement: number
+  previous_agreement: number | null
+  latest_conflict: boolean
+  previous_conflict: boolean | null
+  confidence_delta: number | null
+  agreement_delta: number | null
+  change_type: 'new' | 'flip' | 'strengthening' | 'weakening' | 'stable'
+}
+
+type ConsensusSnapshot = {
+  ticker: string
+  direction: ConsensusDiffRow['latest_direction']
+  agreement_score: number
+  confidence_score: number
+  conflict_flag: boolean
+  created_at: string
+}
+
+function classifyChange(latest: ConsensusSnapshot, previous: ConsensusSnapshot | null): ConsensusDiffRow['change_type'] {
+  if (!previous) return 'new'
+  if (latest.direction !== previous.direction) return 'flip'
+
+  const confidenceDelta = Number(latest.confidence_score) - Number(previous.confidence_score)
+  const agreementDelta = Number(latest.agreement_score) - Number(previous.agreement_score)
+  if (confidenceDelta >= 0.08 || agreementDelta >= 0.08) return 'strengthening'
+  if (confidenceDelta <= -0.08 || agreementDelta <= -0.08) return 'weakening'
+  return 'stable'
+}
+
+export async function latestConsensusDiff(limit = 25): Promise<ConsensusDiffRow[]> {
+  const sb = client()
+  if (!sb) return []
+
+  const { data } = await sb
+    .from('consensus_signals')
+    .select('ticker,direction,agreement_score,confidence_score,conflict_flag,created_at')
+    .order('created_at', { ascending: false })
+    .limit(Math.max(200, limit * 8))
+
+  const grouped = new Map<string, ConsensusSnapshot[]>()
+  for (const row of (data || []) as ConsensusSnapshot[]) {
+    const ticker = String(row.ticker || '').toUpperCase()
+    if (!ticker) continue
+    const snapshots = grouped.get(ticker) || []
+    if (snapshots.length < 2) snapshots.push(row)
+    grouped.set(ticker, snapshots)
+  }
+
+  const diffs: ConsensusDiffRow[] = []
+  for (const [ticker, snapshots] of grouped) {
+    const latest = snapshots[0]
+    const previous = snapshots[1] || null
+    diffs.push({
+      ticker,
+      latest_created_at: latest.created_at,
+      previous_created_at: previous?.created_at || null,
+      latest_direction: latest.direction,
+      previous_direction: previous?.direction || null,
+      latest_confidence: Number(latest.confidence_score),
+      previous_confidence: previous ? Number(previous.confidence_score) : null,
+      latest_agreement: Number(latest.agreement_score),
+      previous_agreement: previous ? Number(previous.agreement_score) : null,
+      latest_conflict: Boolean(latest.conflict_flag),
+      previous_conflict: previous ? Boolean(previous.conflict_flag) : null,
+      confidence_delta: previous
+        ? Number((Number(latest.confidence_score) - Number(previous.confidence_score)).toFixed(3))
+        : null,
+      agreement_delta: previous
+        ? Number((Number(latest.agreement_score) - Number(previous.agreement_score)).toFixed(3))
+        : null,
+      change_type: classifyChange(latest, previous),
+    })
+  }
+
+  const rank = { flip: 0, weakening: 1, strengthening: 2, new: 3, stable: 4 } as const
+  return diffs
+    .sort((a, b) => rank[a.change_type] - rank[b.change_type]
+      || (Math.abs(b.confidence_delta || 0) + Math.abs(b.agreement_delta || 0))
+      - (Math.abs(a.confidence_delta || 0) + Math.abs(a.agreement_delta || 0)))
+    .slice(0, limit)
 }

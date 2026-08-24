@@ -4,7 +4,7 @@ import { analyzeWatchlist } from '@/lib/engine'
 import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
 import { enrichWithGemini } from '@/lib/gemini'
 import { verifyJobRequest } from '@/lib/jobAuth'
-import { ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
+import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 40
@@ -32,19 +32,33 @@ export async function POST(req: NextRequest) {
     const analysis = { ...base, signals }
     const savedRun = await saveRun(analysis)
 
-    const engineOutputs = ruleEngineOutputsFromAnalysis(analysis)
+    if (!savedRun.ok || !savedRun.runId) {
+      return NextResponse.json({ error: savedRun.error || 'run persistence failed', savedRun }, { status: 502 })
+    }
+
+    const engineOutputs = ruleEngineOutputsFromAnalysis(analysis, savedRun.runId)
     const ingest = await ingestEngineOutputs(engineOutputs)
     const consensus = engineOutputs
       .map((row) => computeConsensus([row]))
       .filter((row) => row !== null)
 
     const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
+    const errors = [
+      ...('error' in ingest && ingest.error ? [ingest.error] : []),
+      ...consensusWrites.flatMap((row) => row.error ? [row.error] : []),
+    ]
+    const completion = await completeRun(
+      savedRun.runId,
+      errors.length ? 'partial' : 'completed',
+      errors.join('; ') || undefined,
+    )
 
     return NextResponse.json({
       ok: true,
       asOf: analysis.asOf,
       watchlist,
       savedRun,
+      completion,
       engineOutputs: {
         attempted: engineOutputs.length,
         result: ingest,

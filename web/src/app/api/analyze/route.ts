@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeWatchlist } from '@/lib/engine'
 import { enrichWithGemini } from '@/lib/gemini'
-import { saveRun } from '@/lib/supabase'
+import { computeConsensus } from '@/lib/consensus'
+import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
+import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 12
@@ -68,6 +70,23 @@ export async function POST(req: NextRequest) {
     const draft = { ...base, signals }
 
     const saved = await saveRun(draft)
+    let pipelineResult: Record<string, unknown> = { saved }
+
+    if (saved.ok && saved.runId) {
+      const engineOutputs = ruleEngineOutputsFromAnalysis(draft, saved.runId)
+      const ingested = await ingestEngineOutputs(engineOutputs)
+      const consensus = engineOutputs
+        .map((row) => computeConsensus([row]))
+        .filter((row) => row !== null)
+      const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
+      const writeErrors = [
+        ...('error' in ingested && ingested.error ? [ingested.error] : []),
+        ...consensusWrites.flatMap((row) => row.error ? [row.error] : []),
+      ]
+      const finalStatus = writeErrors.length ? 'partial' : 'completed'
+      const completion = await completeRun(saved.runId, finalStatus, writeErrors.join('; ') || undefined)
+      pipelineResult = { saved, ingested, consensus, completion }
+    }
     const persistenceStep = {
       label: 'Persistence',
       status: saved.ok ? 'complete' as const : saved.error ? 'fallback' as const : 'skipped' as const,
@@ -77,7 +96,7 @@ export async function POST(req: NextRequest) {
           ? `Supabase save failed: ${saved.error}`
           : 'Supabase env absent; analysis remains live but not stored',
     }
-    const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], saved }
+    const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], ...pipelineResult }
 
     responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload })
     return NextResponse.json(payload)

@@ -1,6 +1,7 @@
 export type Direction = 'bullish' | 'neutral' | 'bearish'
 
 export type EngineOutput = {
+  run_id: number
   ticker: string
   market: string
   run_timestamp: string
@@ -20,6 +21,7 @@ export type EngineOutput = {
 }
 
 export type ConsensusResult = {
+  run_id: number
   ticker: string
   market: string
   direction: Direction
@@ -99,6 +101,7 @@ export function computeConsensus(rows: EngineOutput[]): ConsensusResult | null {
     : 'Wait for confirmation; track catalysts and trend shifts.'
 
   return {
+    run_id: rows[0].run_id,
     ticker,
     market,
     direction,

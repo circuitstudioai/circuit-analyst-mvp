@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
-import { latestConsensus, latestDailyBrief, saveDailyBrief } from '@/lib/supabase'
+import { latestCompletedRun, latestConsensus, latestDailyBrief, saveDailyBrief } from '@/lib/supabase'
 import { ConsensusResult } from '@/lib/consensus'
 
 export async function GET() {
-  const existing = await latestDailyBrief()
+  const run = await latestCompletedRun()
+  if (!run) return NextResponse.json({ brief: null, source: 'none' })
+
+  const existing = await latestDailyBrief(run.id)
   if (existing) return NextResponse.json({ brief: existing, source: 'stored' })
 
-  const consensus = (await latestConsensus()) as ConsensusResult[]
+  const consensus = (await latestConsensus(run.id)) as ConsensusResult[]
   if (!consensus.length) return NextResponse.json({ brief: null, source: 'none' })
 
   const topConviction = [...consensus]
@@ -33,6 +36,7 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10)
   const payload = {
+    run_id: run.id,
     brief_date: today,
     title,
     summary,

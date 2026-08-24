@@ -9,8 +9,9 @@ function signalDirection(decision: Decision) {
   return 'neutral' as const
 }
 
-export function ruleEngineOutputsFromAnalysis(payload: AnalyzeResponse): EngineOutput[] {
+export function ruleEngineOutputsFromAnalysis(payload: AnalyzeResponse, runId: number): EngineOutput[] {
   return payload.signals.map((signal) => ({
+    run_id: runId,
     ticker: signal.symbol,
     market: 'US',
     run_timestamp: payload.asOf,
@@ -43,6 +44,7 @@ export function validateEngineOutputRows(input: unknown) {
   const rows: EngineOutput[] = []
   for (const item of input) {
     const row = item as Partial<EngineOutput>
+    const runId = Number(row.run_id)
     const ticker = String(row.ticker || '').trim().toUpperCase()
     const engineName = String(row.engine_name || '').trim()
     const market = String(row.market || 'US').trim().toUpperCase()
@@ -50,6 +52,7 @@ export function validateEngineOutputRows(input: unknown) {
     const confidence = Number(row.confidence)
     const runTimestamp = String(row.run_timestamp || '').trim()
 
+    if (!Number.isSafeInteger(runId) || runId <= 0) return { rows: [], error: 'invalid run_id' }
     if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(ticker)) return { rows: [], error: 'invalid ticker' }
     if (!/^[a-zA-Z0-9_-]{2,48}$/.test(engineName)) return { rows: [], error: 'invalid engine_name' }
     if (!directions.has(direction)) return { rows: [], error: 'invalid direction' }
@@ -61,6 +64,7 @@ export function validateEngineOutputRows(input: unknown) {
     }
 
     rows.push({
+      run_id: runId,
       ticker,
       market,
       run_timestamp: new Date(runTimestamp).toISOString(),

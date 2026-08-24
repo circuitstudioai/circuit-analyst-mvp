@@ -10,9 +10,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const ticker = (body?.ticker || '').toString().toUpperCase()
+    const runId = Number(body?.runId)
     if (!ticker) return NextResponse.json({ error: 'ticker required' }, { status: 400 })
+    if (!Number.isSafeInteger(runId) || runId <= 0) {
+      return NextResponse.json({ error: 'valid runId required' }, { status: 400 })
+    }
 
-    const rows = (await latestEngineOutputsByTicker(ticker)) as EngineOutput[]
+    const rows = (await latestEngineOutputsByTicker(ticker, runId)) as EngineOutput[]
     if (!rows.length) return NextResponse.json({ error: 'no engine outputs for ticker' }, { status: 404 })
 
     // latest per engine
