@@ -55,6 +55,128 @@
   padding: 18px;
 }
 
+.betaAccess {
+  margin: -18px -18px 18px;
+  border-bottom: 2px solid #101a1d;
+  background: #101a1d;
+  color: #fffdf5;
+  padding: 14px;
+}
+
+.betaHeader,
+.quotaStrip,
+.universeRail,
+.feedbackRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.betaHeader {
+  justify-content: space-between;
+}
+
+.betaHeader strong,
+.betaEyebrow {
+  display: block;
+}
+
+.betaHeader strong {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.betaEyebrow {
+  color: #d0b35c;
+  font: 10px/1.2 var(--font-geist-mono), monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.textButton {
+  border: 0;
+  background: transparent;
+  color: #d8e8dc;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.authForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.authForm input,
+.authForm button {
+  min-height: 42px;
+  border: 1px solid #879094;
+  padding: 9px 11px;
+}
+
+.authForm input {
+  min-width: 0;
+  background: #fffdf5;
+  color: #101a1d;
+  font: 13px/1.2 var(--font-geist-mono), monospace;
+}
+
+.authForm button {
+  background: #d0b35c;
+  color: #101a1d;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.authMessage {
+  margin-top: 8px;
+  color: #d8e8dc;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quotaStrip {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.quotaStrip span {
+  border: 1px solid #526468;
+  padding: 6px 8px;
+  color: #d8e8dc;
+  font: 10px/1.2 var(--font-geist-mono), monospace;
+}
+
+.universeRail {
+  overflow-x: auto;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #344448;
+}
+
+.universeRail > span {
+  flex: 0 0 auto;
+  color: #879094;
+  font: 10px/1.2 var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.universeRail button {
+  flex: 0 0 auto;
+  border: 1px solid #526468;
+  background: #1b292d;
+  color: #fffdf5;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.universeRail small {
+  margin-right: 5px;
+  color: #d0b35c;
+}
+
 .consoleTop {
   display: flex;
   justify-content: space-between;
@@ -473,6 +595,28 @@
   font: 12px/1.55 var(--font-geist-mono), monospace;
 }
 
+.feedbackRow {
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #d7cfb7;
+}
+
+.feedbackRow span {
+  margin-right: auto;
+  color: #526468;
+  font-size: 12px;
+}
+
+.feedbackRow button {
+  border: 1px solid #9c8d5a;
+  background: #fbf0c8;
+  color: #101a1d;
+  padding: 6px 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;
@@ -528,6 +672,10 @@
 
   .consoleTop {
     display: grid;
+  }
+
+  .authForm {
+    grid-template-columns: 1fr;
   }
 
   .reportGrid {

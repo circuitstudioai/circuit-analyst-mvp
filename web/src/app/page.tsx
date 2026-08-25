@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import styles from './page.module.css'
 import { AnalyzeResponse, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
+import { BetaAccess } from './BetaAccess'
 
 const samples = [
   ['NVDA'],
@@ -42,6 +43,19 @@ export default function HomePage() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
   const [error, setError] = useState<string>('')
+  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<Record<string, string>>({})
+
+  const loadUserWatchlist = useCallback((symbols: string[]) => {
+    setWatchlistText((current) => current === 'NVDA, AMD, SOFI, HIMS' ? symbols.join(', ') : current)
+  }, [])
+
+  const pickUniverseSymbol = useCallback((symbol: string) => {
+    setWatchlistText((current) => {
+      const symbols = [...new Set([...current.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean), symbol])]
+      return symbols.slice(0, 12).join(', ')
+    })
+  }, [])
 
   const watchlist = useMemo(
     () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
@@ -62,9 +76,15 @@ export default function HomePage() {
     return recentRuns.find((run) => Math.abs(new Date(run.as_of).getTime() - current) > 1000)
   }, [recentRuns, result])
 
+  const visibleRuns = accessToken ? recentRuns : []
+
   async function fetchRecentRuns() {
+    if (!accessToken) {
+      setRecentRuns([])
+      return
+    }
     try {
-      const res = await fetch('/api/runs', { cache: 'no-store' })
+      const res = await fetch('/api/runs', { cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` } })
       if (!res.ok) return
       const data = await res.json()
       setRecentRuns(Array.isArray(data?.runs) ? data.runs : [])
@@ -76,7 +96,11 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false
 
-    fetch('/api/runs', { cache: 'no-store' })
+    if (!accessToken) {
+      return () => { cancelled = true }
+    }
+
+    fetch('/api/runs', { cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` } })
       .then((res) => res.ok ? res.json() : { runs: [] })
       .then((data) => {
         if (!cancelled) setRecentRuns(Array.isArray(data?.runs) ? data.runs : [])
@@ -88,20 +112,29 @@ export default function HomePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [accessToken])
 
   async function runAnalysis(symbols = watchlist) {
+    if (!accessToken) {
+      setError('Sign in with a beta magic link to run analysis.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ watchlist: symbols }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
       setResult(data)
+      void fetch('/api/me', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ symbols }),
+      })
       void fetchRecentRuns()
       const url = new URL(window.location.href)
       url.searchParams.set('tickers', symbols.join(','))
@@ -111,6 +144,17 @@ export default function HomePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function submitFeedback(signal: SignalRow, helpful: boolean) {
+    if (!accessToken) return
+    setFeedback((current) => ({ ...current, [signal.symbol]: 'sending' }))
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ runId: result?.saved?.runId, symbol: signal.symbol, helpful }),
+    })
+    setFeedback((current) => ({ ...current, [signal.symbol]: response.ok ? 'saved' : 'error' }))
   }
 
   function loadSample(symbols: string[]) {
@@ -133,15 +177,20 @@ export default function HomePage() {
           <p className={styles.kicker}>Circuit Studio AI</p>
           <h1>Circuit Market Desk</h1>
           <p>
-            A public no-login AI stock analyst demo that turns a watchlist into decisions,
+            A focused beta market desk that turns a watchlist into decisions,
             thesis, risk, invalidation, next actions, and research-backed evidence.
           </p>
         </div>
 
         <div className={styles.console}>
+          <BetaAccess
+            onToken={setAccessToken}
+            onLoadWatchlist={loadUserWatchlist}
+            onPickSymbol={pickUniverseSymbol}
+          />
           <div className={styles.consoleTop}>
-            <span>Public demo</span>
-            <span>No account required</span>
+            <span>Evidence-led beta</span>
+            <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
           </div>
           <label className={styles.label}>Ticker or watchlist</label>
           <textarea
@@ -158,8 +207,8 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-          <button onClick={() => runAnalysis()} disabled={loading} className={styles.button}>
-            {loading ? 'Analyzing...' : 'Run analysis'}
+          <button onClick={() => runAnalysis()} disabled={loading || !accessToken} className={styles.button}>
+            {loading ? 'Analyzing...' : accessToken ? 'Run analysis' : 'Sign in to analyze'}
           </button>
           {error && <p className={styles.error}>{error}</p>}
         </div>
@@ -193,11 +242,11 @@ export default function HomePage() {
         <div className={styles.runLedger}>
           <div className={styles.panelHeader}>
             <p className={styles.kicker}>Run ledger</p>
-            <strong>{recentRuns.length ? `${recentRuns.length} stored` : 'Storage idle'}</strong>
+            <strong>{visibleRuns.length ? `${visibleRuns.length} stored` : 'Storage idle'}</strong>
           </div>
-          {recentRuns.length ? (
+          {visibleRuns.length ? (
             <ol>
-              {recentRuns.slice(0, 4).map((run) => (
+              {visibleRuns.slice(0, 4).map((run) => (
                 <li key={run.id}>
                   <span>{new Date(run.as_of).toLocaleString()}</span>
                   <strong>Regime {Number(run.regime_score).toFixed(3)}</strong>
@@ -287,6 +336,11 @@ export default function HomePage() {
                 </div>
 
                 {signal.aiExplanation && <pre className={styles.aiNote}>{signal.aiExplanation}</pre>}
+                <div className={styles.feedbackRow}>
+                  <span>{feedback[signal.symbol] === 'saved' ? 'Feedback saved' : 'Useful for your decision?'}</span>
+                  <button type="button" onClick={() => submitFeedback(signal, true)} disabled={feedback[signal.symbol] === 'sending'}>Yes</button>
+                  <button type="button" onClick={() => submitFeedback(signal, false)} disabled={feedback[signal.symbol] === 'sending'}>No</button>
+                </div>
               </article>
             ))}
           </div>

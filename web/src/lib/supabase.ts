@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { AnalyzeResponse } from './types'
 import { ConsensusResult, EngineOutput } from './consensus'
 
-function client() {
+export function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) return null
@@ -10,7 +10,7 @@ function client() {
 }
 
 export async function saveRun(payload: AnalyzeResponse) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return { skipped: true }
 
   const { data: run, error: runErr } = await sb
@@ -51,7 +51,7 @@ export async function completeRun(
   status: 'completed' | 'partial' | 'failed' = 'completed',
   errorMessage?: string,
 ) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return { skipped: true }
   const { error } = await sb
     .from('analysis_runs')
@@ -65,7 +65,7 @@ export async function completeRun(
 }
 
 export async function recentRuns(limit = 10) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return []
   const { data } = await sb
     .from('analysis_runs')
@@ -76,7 +76,7 @@ export async function recentRuns(limit = 10) {
 }
 
 export async function ingestEngineOutputs(rows: EngineOutput[]) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return { skipped: true }
   if (!rows.length) return { ok: true, inserted: 0 }
 
@@ -108,7 +108,7 @@ export async function ingestEngineOutputs(rows: EngineOutput[]) {
 }
 
 export async function latestEngineOutputsByTicker(ticker: string, runId: number) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return []
   const { data } = await sb
     .from('engine_outputs')
@@ -121,7 +121,7 @@ export async function latestEngineOutputsByTicker(ticker: string, runId: number)
 }
 
 export async function saveConsensus(result: ConsensusResult) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return { skipped: true }
   const { error } = await sb
     .from('consensus_signals')
@@ -131,7 +131,7 @@ export async function saveConsensus(result: ConsensusResult) {
 }
 
 export async function latestConsensus(runId: number, ticker?: string) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return []
   let q = sb
     .from('consensus_signals')
@@ -154,7 +154,7 @@ export async function saveDailyBrief(payload: {
   key_catalysts: Array<Record<string, unknown>>
   markdown: string
 }) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return { skipped: true }
 
   const { error } = await sb.from('daily_briefs').upsert(payload, { onConflict: 'run_id' })
@@ -163,7 +163,7 @@ export async function saveDailyBrief(payload: {
 }
 
 export async function latestDailyBrief(runId?: number) {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return null
   let query = sb
     .from('daily_briefs')
@@ -176,7 +176,7 @@ export async function latestDailyBrief(runId?: number) {
 }
 
 export async function latestCompletedRun() {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return null
   const { data } = await sb
     .from('analysis_runs')
@@ -226,7 +226,7 @@ function classifyChange(latest: ConsensusSnapshot, previous: ConsensusSnapshot |
 }
 
 export async function latestConsensusDiff(limit = 25): Promise<ConsensusDiffRow[]> {
-  const sb = client()
+  const sb = serviceClient()
   if (!sb) return []
 
   const { data } = await sb

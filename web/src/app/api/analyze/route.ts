@@ -4,6 +4,8 @@ import { enrichWithGemini } from '@/lib/gemini'
 import { computeConsensus } from '@/lib/consensus'
 import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
+import { requireBetaUser } from '@/lib/betaAuth'
+import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest } from '@/lib/betaData'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 12
@@ -44,7 +46,12 @@ function normalizeWatchlist(input: unknown) {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
+  let requestId: string | null | undefined
   try {
+    const auth = await requireBetaUser(req)
+    if (auth.response) return auth.response
+
     const retryAfter = checkRateLimit(req)
     if (retryAfter) {
       return NextResponse.json({ error: 'Rate limit exceeded. Please try again later.' }, {
@@ -59,9 +66,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Enter at least one valid ticker.' }, { status: 400 })
     }
 
+    const quota = await claimAnalysisQuota(auth.user.id, watchlist.length)
+    if (!quota.allowed) {
+      return NextResponse.json({
+        error: 'Daily beta quota reached. Try again tomorrow.',
+        quota: { analysesUsed: quota.analysis_count, analysesLimit: 3, symbolsUsed: quota.symbol_count, symbolsLimit: 24 },
+      }, { status: 429 })
+    }
+    requestId = await createAnalysisRequest(auth.user.id, watchlist)
+
     const cacheKey = watchlist.join(',')
     const cached = responseCache.get(cacheKey)
     if (cached && cached.expires > Date.now()) {
+      await finishAnalysisRequest(requestId, { status: 'cached', durationMs: Date.now() - startedAt })
       return NextResponse.json({ ...(cached.payload as object), cached: true })
     }
 
@@ -99,9 +116,15 @@ export async function POST(req: NextRequest) {
     const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], ...pipelineResult }
 
     responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload })
+    await finishAnalysisRequest(requestId, {
+      runId: saved.runId,
+      status: saved.ok ? 'completed' : 'partial',
+      durationMs: Date.now() - startedAt,
+    })
     return NextResponse.json(payload)
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Analyze failed'
+    await finishAnalysisRequest(requestId, { status: 'failed', durationMs: Date.now() - startedAt, error: message })
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
