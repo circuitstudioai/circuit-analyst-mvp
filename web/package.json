@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "smoke:beta": "node scripts/smoke-beta.mjs",
     "universe:build": "node scripts/build-symbol-universe.mjs",
     "universe:sync": "node scripts/sync-symbol-universe.mjs"
   },
