@@ -16,12 +16,12 @@ function normalizeWatchlist(input: unknown) {
     .slice(0, MAX_SYMBOLS)
 }
 
-export async function POST(req: NextRequest) {
+async function runRefresh(req: NextRequest, input: unknown) {
   try {
     const unauthorized = verifyJobRequest(req)
     if (unauthorized) return unauthorized
 
-    const body = await req.json().catch(() => ({}))
+    const body = (input && typeof input === 'object' ? input : {}) as { watchlist?: unknown }
     const watchlist = normalizeWatchlist(body?.watchlist)
     if (!watchlist.length) {
       return NextResponse.json({ error: 'at least one valid ticker required' }, { status: 400 })
@@ -75,4 +75,13 @@ export async function POST(req: NextRequest) {
     const message = e instanceof Error ? e.message : 'refresh failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+
+export async function GET(req: NextRequest) {
+  return runRefresh(req, {})
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}))
+  return runRefresh(req, body)
 }
