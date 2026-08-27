@@ -49,17 +49,17 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] Live company/symbol search with on-demand analysis
 - [x] Production beta smoke harness
 - [x] No synthetic-price decisions in the live path
-- [ ] Weekday scheduled refresh verified in production
+- [x] Weekday scheduled refresh verified in production
 - [ ] First 10 external beta users invited
 
 ## Deliverables
-1. Live app URL (Vercel): https://web-circuitstudioais-projects.vercel.app
+1. Live app URL (Vercel): https://circuit-market-desk.vercel.app
 2. Setup docs for Supabase schema + env vars
 3. Working Analyze flow (persistence auto-enabled when Supabase env vars are set)
 4. Gemini explanation in dashboard (auto-enabled when GEMINI_API_KEY is set)
 
 ## Risks / Blockers
-- `CRON_SECRET` must be configured before the weekday refresh can run.
+- Weekday refresh is configured for 12:00 UTC; monitor its first unattended runs.
 - Yahoo public chart/search endpoints are suitable for beta validation, not a commercial data SLA.
 - Early-user activation, retention, and usefulness metrics still need real beta traffic.
 
