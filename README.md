@@ -18,6 +18,8 @@ npm run dev
 
 Open: `http://localhost:3000`
 
+Public beta: `https://circuit-market-desk.vercel.app`
+
 The production beta uses Supabase magic-link authentication. Signed-in users can
 search by company name or symbol and run any supported Yahoo equity/ETF ticker
 on demand; scheduled refresh is only responsible for the shared daily brief.
