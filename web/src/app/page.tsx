@@ -13,6 +13,13 @@ const samples = [
   ['LMND', 'OSCR', 'WELL', 'ZETA'],
 ]
 
+type SymbolSearchResult = {
+  symbol: string
+  name: string
+  exchange: string
+  type: string
+}
+
 function cardClass(decision: SignalRow['decision']) {
   if (decision === 'BUY') return `${styles.report} ${styles.reportBuy}`
   if (decision === 'SELL') return `${styles.report} ${styles.reportSell}`
@@ -45,6 +52,9 @@ export default function HomePage() {
   const [error, setError] = useState<string>('')
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Record<string, string>>({})
+  const [symbolQuery, setSymbolQuery] = useState('')
+  const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([])
+  const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
     setWatchlistText((current) => current === 'NVDA, AMD, SOFI, HIMS' ? symbols.join(', ') : current)
@@ -61,6 +71,34 @@ export default function HomePage() {
     () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
     [watchlistText]
   )
+
+  useEffect(() => {
+    const query = symbolQuery.trim()
+    if (!query) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setSymbolSearchState('searching')
+      try {
+        const response = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        const data = await response.json()
+        setSymbolResults(Array.isArray(data?.items) ? data.items : [])
+      } catch {
+        if (!controller.signal.aborted) setSymbolResults([])
+      } finally {
+        if (!controller.signal.aborted) setSymbolSearchState('ready')
+      }
+    }, 250)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [symbolQuery])
+
+  function addSymbol(symbol: string) {
+    pickUniverseSymbol(symbol)
+    setSymbolQuery('')
+    setSymbolResults([])
+  }
 
   const topSetups = useMemo(() => {
     if (!result) return []
@@ -193,6 +231,34 @@ export default function HomePage() {
             <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
           </div>
           <label className={styles.label}>Ticker or watchlist</label>
+          <div className={styles.symbolSearch}>
+            <input
+              value={symbolQuery}
+              onChange={(event) => {
+                const next = event.target.value
+                setSymbolQuery(next)
+                if (!next.trim()) {
+                  setSymbolResults([])
+                  setSymbolSearchState('idle')
+                }
+              }}
+              placeholder="Search symbol or company — e.g. TSLA or Shopify"
+              aria-label="Search live market symbols"
+              autoComplete="off"
+            />
+            <span>{symbolSearchState === 'searching' ? 'Searching…' : 'Live symbol lookup'}</span>
+            {symbolQuery && symbolSearchState === 'ready' && (
+              <div className={styles.symbolResults} role="listbox" aria-label="Symbol search results">
+                {symbolResults.length ? symbolResults.map((item) => (
+                  <button key={`${item.symbol}-${item.exchange}`} type="button" onClick={() => addSymbol(item.symbol)}>
+                    <strong>{item.symbol}</strong>
+                    <span>{item.name}</span>
+                    <small>{item.exchange} · {item.type}</small>
+                  </button>
+                )) : <p>No supported equity or ETF found.</p>}
+              </div>
+            )}
+          </div>
           <textarea
             value={watchlistText}
             onChange={(e) => setWatchlistText(e.target.value)}
@@ -200,6 +266,7 @@ export default function HomePage() {
             className={styles.textarea}
             aria-label="Ticker watchlist"
           />
+          <p className={styles.inputHint}>Search by company name or enter any supported Yahoo ticker. Analysis runs live when you press Run analysis; scheduled refresh only powers the daily desk.</p>
           <div className={styles.sampleRow}>
             {samples.map((symbols) => (
               <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
@@ -287,7 +354,7 @@ export default function HomePage() {
         {!result ? (
           <div className={styles.empty}>
             <strong>Try NVDA, AMD, SOFI, or your own watchlist.</strong>
-            <span>The first useful screen is the tool itself: no login, no credits, no setup.</span>
+            <span>Sign in with a beta magic link, search any supported ticker, and run a live evidence-led analysis.</span>
           </div>
         ) : (
           <div className={styles.reportGrid}>

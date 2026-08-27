@@ -24,7 +24,7 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] Fallback explanations when Gemini key unavailable
 - [x] Confidence-aware explanation tone
 
-## Milestone 4 — Supabase Integration (Partially done)
+## Milestone 4 — Supabase Integration (Done)
 - [x] Add Supabase client wiring (server)
 - [x] Persist analysis runs and signal rows
 - [x] Add SQL schema + setup docs
@@ -32,7 +32,7 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 
 ## Milestone 5 — Deploy & Validate (Done)
 - [x] Vercel project deployment
-- [ ] Environment variables configured (Vercel + Supabase + Gemini)
+- [x] Environment variables configured (Vercel + Supabase + Gemini)
 - [x] Health check + smoke test
 - [x] Shareable URL + launch checklist
 
@@ -42,15 +42,25 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [x] Public demo watchlist preset
 - [x] Built-by-Circuit signature branding
 
+## Milestone 7 — Authenticated Beta (In progress)
+- [x] Supabase magic-link access and per-user RLS
+- [x] 100-symbol pilot universe and user watchlists
+- [x] Per-user quotas, run ledger, and usefulness feedback
+- [x] Live company/symbol search with on-demand analysis
+- [x] Production beta smoke harness
+- [x] No synthetic-price decisions in the live path
+- [ ] Weekday scheduled refresh verified in production
+- [ ] First 10 external beta users invited
+
 ## Deliverables
-1. Live app URL (Vercel): https://web-lime-kappa-15.vercel.app
+1. Live app URL (Vercel): https://web-circuitstudioais-projects.vercel.app
 2. Setup docs for Supabase schema + env vars
 3. Working Analyze flow (persistence auto-enabled when Supabase env vars are set)
 4. Gemini explanation in dashboard (auto-enabled when GEMINI_API_KEY is set)
 
 ## Risks / Blockers
-- Vercel auth or deployment permissions
-- Supabase project credentials are not currently present in local or Vercel env
-- Gemini API key is not currently present in local or Vercel env
+- `CRON_SECRET` must be configured before the weekday refresh can run.
+- Yahoo public chart/search endpoints are suitable for beta validation, not a commercial data SLA.
+- Early-user activation, retention, and usefulness metrics still need real beta traffic.
 
 If any blocker occurs, pause only for credentials/approval and continue immediately after.

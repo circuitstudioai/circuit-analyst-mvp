@@ -208,7 +208,7 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
         label: 'Public price fetch',
         status: fallbackSymbols.length ? 'fallback' : 'complete',
         detail: fallbackSymbols.length
-          ? `Live Yahoo data used where available; fallback series used for ${fallbackSymbols.join(', ')}`
+          ? `No synthetic prices used. Yahoo data was unavailable for ${fallbackSymbols.join(', ')}; those symbols abstained.`
           : `${symbols.length} watchlist symbols plus SPY/QQQ benchmark data from Yahoo chart`,
       },
       {

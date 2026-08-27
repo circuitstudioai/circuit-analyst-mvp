@@ -1,6 +1,6 @@
 # Circuit Market Desk
 
-No-login public AI stock analyst demo for Circuit Studio AI.
+Authenticated early-feedback beta for an accountable AI market-research desk.
 
 ## Live architecture (MVP)
 - **Vercel**: hosts the Next.js app (`/web`)
@@ -18,9 +18,9 @@ npm run dev
 
 Open: `http://localhost:3000`
 
-No environment variables are required for the default public-data analysis.
-Gemini and Supabase are optional enhancements. The first screen is the usable
-demo; auth, credits, and billing are intentionally absent from the public path.
+The production beta uses Supabase magic-link authentication. Signed-in users can
+search by company name or symbol and run any supported Yahoo equity/ETF ticker
+on demand; scheduled refresh is only responsible for the shared daily brief.
 
 ## Key routes
 - `POST /api/analyze` → compute accountable watchlist signals + optional Gemini explanations + optional Supabase save
@@ -28,6 +28,8 @@ demo; auth, credits, and billing are intentionally absent from the public path.
 - `POST /api/engines/ingest` → ingest external engine outputs
 - `POST /api/consensus` → compute consensus from ingested engine outputs
 - `GET /api/brief/latest` → latest stored daily brief
+- `GET /api/symbols/search?q=...` → live equity/ETF symbol lookup
+- `GET /api/jobs/refresh` → authenticated Vercel Cron refresh (weekdays at 12:00 UTC)
 
 ## What the app returns
 Each watchlist symbol gets:
@@ -65,6 +67,7 @@ Desk without touching the CLI harness.
    - `GEMINI_MODEL` (optional)
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `CRON_SECRET` (at least 32 random characters)
 4. Deploy.
 
 ## Supabase setup
@@ -75,6 +78,9 @@ profiles, saved watchlists, saved reports, and provider-usage tracking.
 
 ## Positioning
 Most AI stock tools generate opinions. **Circuit Market Desk generates accountable decisions.**
+
+The production path never creates directional decisions from synthetic prices.
+If live market history is unavailable or too short, the engine abstains.
 
 ## Disclaimer
 Educational / decision-support only. Not investment advice.
