@@ -19,6 +19,7 @@ export function buildNarrative(metrics: NarrativeMetrics) {
   const { symbol, decision, last, ma20, ma100, momentum20, volatility20, score, regimeBias } = metrics
   const gap20 = last / ma20 - 1
   const gap100 = last / ma100 - 1
+  const aboveMa20 = last >= ma20
   const thresholdGap = decision === 'BUY' ? score - 0.35 : decision === 'SELL' ? -0.35 - score : 0.35 - Math.abs(score)
 
   const thesis = `${symbol} closes at ${money(last)}, ${pct(gap20)} versus its 20-day average and ${pct(gap100)} versus its 100-day average. Twenty-day momentum is ${pct(momentum20)}, recent daily volatility is ${(volatility20 * 100).toFixed(1)}%, and the composite score is ${score.toFixed(3)}.`
@@ -44,13 +45,17 @@ export function buildNarrative(metrics: NarrativeMetrics) {
   ]
 
   const invalidation = decision === 'BUY'
-    ? `${symbol}: reassess on a daily close below MA20 (${money(ma20)}) or if momentum turns negative enough to pull the score below 0.350.`
+    ? aboveMa20
+      ? `${symbol}: reassess on a daily close below MA20 (${money(ma20)}) or if momentum turns negative enough to pull the score below 0.350.`
+      : `${symbol}: the setup needs a daily close back above MA20 (${money(ma20)}); reassess the bullish view on a close below MA100 (${money(ma100)}) or if the score falls below 0.350.`
     : decision === 'SELL'
       ? `${symbol}: reassess on a daily close above MA20 (${money(ma20)}) or if the score recovers above -0.350.`
       : `${symbol}: remain neutral until price/MA20 direction and 20-day momentum align strongly enough to clear ±0.350.`
 
   const nextAction = decision === 'BUY'
-    ? `Build a ${symbol} watch plan around ${money(last)} with ${money(ma20)} as the first technical risk reference; size for ${(volatility20 * 100).toFixed(1)}% daily volatility.`
+    ? aboveMa20
+      ? `Build a ${symbol} watch plan around ${money(last)} with ${money(ma20)} as the first technical risk reference; size for ${(volatility20 * 100).toFixed(1)}% daily volatility.`
+      : `Wait for ${symbol} to reclaim MA20 at ${money(ma20)} before treating the BUY score as confirmed; use MA100 at ${money(ma100)} as the downside reference.`
     : decision === 'SELL'
       ? `Review ${symbol} exposure near ${money(last)} and use ${money(ma20)} as the first recovery checkpoint before changing the bearish stance.`
       : `Keep ${symbol} on watch; wait for a decisive move away from MA20 (${money(ma20)}) before taking a directional view.`
