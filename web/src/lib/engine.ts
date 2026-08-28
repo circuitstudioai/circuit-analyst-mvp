@@ -1,6 +1,7 @@
 import { AnalyzeResponse, Decision, SignalRow } from './types'
 import { fetchYahooDailySeries, PriceSeries } from './marketData'
 import { evidenceForSymbol, latestResearchEvent } from './researchEvidence'
+import { buildNarrative } from './narrative'
 
 type PriceMap = Record<string, PriceSeries>
 
@@ -50,31 +51,6 @@ function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
 
   const decision: Decision = score >= 0.35 ? 'BUY' : score <= -0.35 ? 'SELL' : 'HOLD'
   const confidence = Math.min(0.95, 0.4 + Math.abs(score))
-  const trendText = ma20 > ma100 ? 'constructive trend' : 'weak trend'
-  const momentumText = mom20 >= 0 ? 'positive 20-day momentum' : 'negative 20-day momentum'
-  const riskFlags = [
-    ...(riskPenalty > 0.18 ? ['Elevated recent volatility'] : []),
-    ...(Math.abs(score) < 0.35 ? ['Signal is below action threshold'] : []),
-    ...(regimeBias < 0 ? ['Market regime is a headwind'] : []),
-  ]
-  const thesis =
-    decision === 'BUY'
-      ? `${symbol} has a constructive trend setup with ${momentumText}; position sizing should respect recent volatility.`
-      : decision === 'SELL'
-      ? `${symbol} has a weak technical setup with ${momentumText}; downside control matters more than adding exposure.`
-      : `${symbol} is mixed: ${trendText}, ${momentumText}, and the score does not clear the action threshold.`
-  const invalidation =
-    decision === 'BUY'
-      ? 'Revisit if price loses the 20-day average or the regime score turns negative.'
-      : decision === 'SELL'
-      ? 'Revisit if price reclaims the 20-day average with improving market regime.'
-      : 'Revisit when trend and momentum align or a catalyst changes the setup.'
-  const nextAction =
-    decision === 'BUY'
-      ? 'Build a watch plan with entry range, max loss, and catalyst checklist.'
-      : decision === 'SELL'
-      ? 'Reduce exposure, avoid new buys, or define a downside hedge before acting.'
-      : 'Wait for confirmation; keep on watchlist.'
 
   const reasons = [
     `MA20 ${ma20 > ma100 ? 'above' : 'below'} MA100`,
@@ -82,34 +58,14 @@ function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
     `Volatility penalty ${(riskPenalty * 100).toFixed(1)} bps`,
     `Regime bias ${(regimeBias * 100).toFixed(0)} bps`,
   ]
-  const bullCase = [
-    ma20 > ma100 ? 'Short trend is above the long trend.' : 'A trend reversal would improve the setup.',
-    mom20 >= 0 ? 'Recent buyers are still defending momentum.' : 'A momentum turn would create a cleaner entry.',
-    regimeBias > 0 ? 'Broad market regime is supportive.' : 'Improvement in SPY/QQQ regime would remove a headwind.',
-  ]
-  const bearCase = [
-    riskPenalty > 0.18 ? 'Recent volatility can overwhelm a small edge.' : 'Low volatility can still mask event risk.',
-    ma20 <= ma100 ? 'Short trend remains below long trend.' : 'A 20-day average break would weaken the signal.',
-    Math.abs(score) < 0.35 ? 'Score is not far enough from neutral to force action.' : 'The signal can decay quickly if momentum fades.',
-  ]
-  const catalysts = [
-    'Next earnings update',
-    '20-day momentum shift',
-    'SPY/QQQ regime change',
-  ]
+  const narrative = buildNarrative({ symbol, decision, last, ma20, ma100, momentum20: mom20, volatility20: vol20, score, regimeBias })
 
   return {
     score,
     decision,
     confidence,
     reasons,
-    bullCase,
-    bearCase,
-    thesis,
-    riskFlags: riskFlags.length ? riskFlags : ['No major rule-based risk flag'],
-    catalysts,
-    invalidation,
-    nextAction,
+    ...narrative,
     timeHorizon: 'swing',
     dataQuality: closes.length < 180 ? 'limited' as const : 'ok' as const,
     abstained: false,
@@ -190,6 +146,8 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
       nextAction: s.nextAction,
       timeHorizon: s.timeHorizon,
       dataQuality: s.dataQuality,
+      dataAsOf: prices[symbol]?.dates.at(-1) || null,
+      marketDataStatus: prices[symbol]?.status || 'fallback',
       abstained: s.abstained,
       source: 'Yahoo daily close, 20/100 trend, 20D momentum, realized volatility, SPY/QQQ regime',
       evidence,
@@ -223,8 +181,8 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
       },
       {
         label: 'AI summary',
-        status: process.env.GEMINI_API_KEY ? 'complete' : 'fallback',
-        detail: process.env.GEMINI_API_KEY ? 'Gemini generated analyst notes server-side' : 'Gemini key absent; rule-based report remains usable',
+        status: 'skipped',
+        detail: 'Gemini enrichment has not run yet; deterministic analysis remains authoritative',
       },
     ],
     shareId: Buffer.from(`${symbols.join(',')}|${Date.now()}`).toString('base64url').slice(0, 16),

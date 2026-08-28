@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "smoke:beta": "node scripts/smoke-beta.mjs",
     "universe:build": "node scripts/build-symbol-universe.mjs",
     "universe:sync": "node scripts/sync-symbol-universe.mjs"
@@ -23,9 +24,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "typescript": "^5",
+    "vitest": "^4.1.11",
     "wrangler": "^4.118.0"
   }
 }
