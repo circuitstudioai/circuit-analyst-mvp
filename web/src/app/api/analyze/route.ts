@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeWatchlist } from '@/lib/engine'
-import { enrichWithGemini } from '@/lib/gemini'
+import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
 import { computeConsensus } from '@/lib/consensus'
 import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
     }
 
     const base = await analyzeWatchlist(watchlist)
-    const signals = await enrichWithGemini(base.signals, base.regimeScore)
-    const draft = { ...base, signals }
+    const enrichment = await enrichWithGemini(base.signals, base.regimeScore)
+    const draft = applyGeminiEnrichment(base, enrichment)
 
     const saved = await saveRun(draft)
     let pipelineResult: Record<string, unknown> = { saved }

@@ -35,6 +35,13 @@ export async function saveRun(payload: AnalyzeResponse) {
     last_price: s.lastPrice,
     reasons: s.reasons,
     ai_explanation: s.aiExplanation || null,
+    raw_payload: {
+      dataAsOf: s.dataAsOf,
+      marketDataStatus: s.marketDataStatus,
+      aiStatus: s.aiStatus || 'skipped',
+      aiErrorCode: s.aiErrorCode || null,
+      narrativeVersion: 'v2',
+    },
   }))
 
   const { error: sigErr } = await sb.from('signals').insert(rows)

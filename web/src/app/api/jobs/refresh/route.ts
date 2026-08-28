@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { computeConsensus } from '@/lib/consensus'
 import { analyzeWatchlist } from '@/lib/engine'
 import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
-import { enrichWithGemini } from '@/lib/gemini'
+import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
 import { verifyJobRequest } from '@/lib/jobAuth'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
 
@@ -28,8 +28,8 @@ async function runRefresh(req: NextRequest, input: unknown) {
     }
 
     const base = await analyzeWatchlist(watchlist)
-    const signals = await enrichWithGemini(base.signals, base.regimeScore)
-    const analysis = { ...base, signals }
+    const enrichment = await enrichWithGemini(base.signals, base.regimeScore)
+    const analysis = applyGeminiEnrichment(base, enrichment)
     const savedRun = await saveRun(analysis)
 
     if (!savedRun.ok || !savedRun.runId) {

@@ -16,10 +16,14 @@ export type SignalRow = {
   nextAction: string
   timeHorizon: string
   dataQuality: 'ok' | 'limited' | 'insufficient'
+  dataAsOf: string | null
+  marketDataStatus: 'live' | 'fallback'
   abstained: boolean
   source: string
   evidence: EvidenceBadge[]
   aiExplanation?: string
+  aiStatus?: 'complete' | 'cached' | 'fallback' | 'skipped'
+  aiErrorCode?: string
 }
 
 export type AnalyzeResponse = {
@@ -29,6 +33,14 @@ export type AnalyzeResponse = {
   signals: SignalRow[]
   pipeline: PipelineStep[]
   shareId: string
+  cached?: boolean
+  aiSummary?: {
+    status: 'complete' | 'partial' | 'fallback' | 'skipped'
+    model: string | null
+    generated: number
+    cached: number
+    failed: number
+  }
   saved?: {
     ok?: boolean
     skipped?: boolean

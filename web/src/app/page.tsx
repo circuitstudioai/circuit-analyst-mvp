@@ -346,6 +346,7 @@ export default function HomePage() {
           </div>
           <div className={styles.actions}>
             {result?.asOf && <span className={styles.meta}>As of {new Date(result.asOf).toLocaleString()}</span>}
+            {result?.cached && <span className={`${styles.meta} ${styles.cachedMeta}`}>Unchanged cached run</span>}
             {result && <span className={styles.meta}>Regime {result.regimeScore}</span>}
             {result && <button onClick={copyReport} className={styles.secondaryButton}>Copy report</button>}
           </div>
@@ -372,6 +373,16 @@ export default function HomePage() {
                   <span>${signal.lastPrice}</span>
                   <span>Score {signal.score}</span>
                   <span>{signal.dataQuality}</span>
+                </div>
+
+                <div className={styles.dataTape}>
+                  <span>Daily close · {signal.dataAsOf || 'unavailable'}</span>
+                  <span className={signal.marketDataStatus === 'live' ? styles.liveData : styles.fallbackData}>
+                    {signal.marketDataStatus === 'live' ? 'Live provider data' : 'Data unavailable'}
+                  </span>
+                  <span className={signal.aiStatus === 'complete' || signal.aiStatus === 'cached' ? styles.aiReady : styles.aiFallback}>
+                    {signal.aiStatus === 'complete' ? 'AI note generated' : signal.aiStatus === 'cached' ? 'AI note cached' : 'Deterministic only'}
+                  </span>
                 </div>
 
                 <p className={styles.thesis}>{signal.thesis}</p>
@@ -402,7 +413,9 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                {signal.aiExplanation && <pre className={styles.aiNote}>{signal.aiExplanation}</pre>}
+                {signal.aiExplanation
+                  ? <pre className={styles.aiNote}>{signal.aiExplanation}</pre>
+                  : <p className={styles.aiUnavailable}>AI enrichment unavailable{signal.aiErrorCode ? ` (${signal.aiErrorCode})` : ''}. The rule-based analysis above remains complete.</p>}
                 <div className={styles.feedbackRow}>
                   <span>{feedback[signal.symbol] === 'saved' ? 'Feedback saved' : 'Useful for your decision?'}</span>
                   <button type="button" onClick={() => submitFeedback(signal, true)} disabled={feedback[signal.symbol] === 'sending'}>Yes</button>
