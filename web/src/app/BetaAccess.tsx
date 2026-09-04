@@ -31,6 +31,8 @@ export function BetaAccess({
 }) {
   const [session, setSession] = useState<Session | null>(null)
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authMode, setAuthMode] = useState<'magic_link' | 'presenter'>('magic_link')
   const [message, setMessage] = useState('')
   const [universe, setUniverse] = useState<UniverseSymbol[]>([])
   const [usage, setUsage] = useState<{ analysis_count?: number; symbol_count?: number } | null>(null)
@@ -103,6 +105,15 @@ export function BetaAccess({
     setMessage(error ? error.message : 'Check your inbox for the beta sign-in link.')
   }
 
+  async function signInPresenter(event: FormEvent) {
+    event.preventDefault()
+    const supabase = getBrowserSupabase()
+    if (!supabase || !email.trim() || !password) return
+    setMessage('Signing in…')
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    setMessage(error ? error.message : '')
+  }
+
   async function signOut() {
     await getBrowserSupabase()?.auth.signOut()
     setUsage(null)
@@ -149,7 +160,7 @@ export function BetaAccess({
       </div>
 
       {!session ? (
-        <form className={styles.authForm} onSubmit={requestMagicLink}>
+        <form className={`${styles.authForm} ${authMode === 'presenter' ? styles.presenterAuthForm : ''}`} onSubmit={authMode === 'presenter' ? signInPresenter : requestMagicLink}>
           <input
             type="email"
             required
@@ -158,7 +169,24 @@ export function BetaAccess({
             placeholder="you@company.com"
             aria-label="Email address"
           />
-          <button type="submit">Email magic link</button>
+          {authMode === 'presenter' && (
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Demo password"
+              aria-label="Demo password"
+            />
+          )}
+          <button type="submit">{authMode === 'presenter' ? 'Sign in' : 'Email magic link'}</button>
+          <button
+            type="button"
+            className={styles.authModeButton}
+            onClick={() => { setAuthMode(authMode === 'magic_link' ? 'presenter' : 'magic_link'); setMessage('') }}
+          >
+            {authMode === 'magic_link' ? 'Presenter login' : 'Use magic link'}
+          </button>
         </form>
       ) : (
         <div className={styles.quotaStrip}>
