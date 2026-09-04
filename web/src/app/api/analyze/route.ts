@@ -5,7 +5,7 @@ import { computeConsensus } from '@/lib/consensus'
 import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
 import { requireBetaUser } from '@/lib/betaAuth'
-import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest } from '@/lib/betaData'
+import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 12
@@ -78,7 +78,12 @@ export async function POST(req: NextRequest) {
     const cacheKey = watchlist.join(',')
     const cached = responseCache.get(cacheKey)
     if (cached && cached.expires > Date.now()) {
-      await finishAnalysisRequest(requestId, { status: 'cached', durationMs: Date.now() - startedAt })
+      const cachedRunId = Number((cached.payload as { saved?: { runId?: number } }).saved?.runId) || undefined
+      await finishAnalysisRequest(requestId, { runId: cachedRunId, status: 'cached', durationMs: Date.now() - startedAt })
+      await recordProductEvent(auth.user.id, 'analysis_completed', {
+        runId: cachedRunId,
+        properties: { symbolCount: watchlist.length, cached: true, persisted: Boolean(cachedRunId) },
+      })
       return NextResponse.json({ ...(cached.payload as object), cached: true })
     }
 
@@ -120,6 +125,10 @@ export async function POST(req: NextRequest) {
       runId: saved.runId,
       status: saved.ok ? 'completed' : 'partial',
       durationMs: Date.now() - startedAt,
+    })
+    await recordProductEvent(auth.user.id, 'analysis_completed', {
+      runId: saved.runId,
+      properties: { symbolCount: watchlist.length, cached: false, persisted: Boolean(saved.ok) },
     })
     return NextResponse.json(payload)
   } catch (e: unknown) {
