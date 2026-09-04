@@ -42,8 +42,8 @@ function safeErrorCode(error: unknown) {
   const status = Number(value?.status || value?.code)
   const message = String(value?.message || '').toLowerCase()
   if (status === 401 || status === 403 || message.includes('api key')) return 'auth'
-  if (status === 404 || message.includes('not found') || message.includes('model')) return 'model'
   if (status === 429 || message.includes('quota') || message.includes('rate')) return 'quota'
+  if (status === 404 || message.includes('not found') || message.includes('model')) return 'model'
   if (message.includes('timeout')) return 'timeout'
   return 'provider'
 }
@@ -96,8 +96,15 @@ export async function enrichWithGemini(
       else failed += 1
     } catch (error) {
       const errorCode = safeErrorCode(error)
+      const providerError = error as { status?: number; code?: number | string; message?: string }
       failed += 1
-      console.warn('[gemini]', JSON.stringify({ symbol: s.symbol, model, status: 'error', errorCode }))
+      console.warn('[gemini]', JSON.stringify({
+        symbol: s.symbol,
+        model,
+        status: Number(providerError?.status || providerError?.code) || null,
+        errorCode,
+        message: String(providerError?.message || 'unknown provider error').slice(0, 240),
+      }))
       out.push({ ...s, aiStatus: 'fallback', aiErrorCode: errorCode })
     }
   }
