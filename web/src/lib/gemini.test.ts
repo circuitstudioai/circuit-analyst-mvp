@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enrichWithGemini } from './gemini'
+import { buildPlainLanguagePrompt, enrichWithGemini } from './gemini'
 import { SignalRow } from './types'
 
 function signal(symbol: string): SignalRow {
@@ -13,6 +13,16 @@ function signal(symbol: string): SignalRow {
 }
 
 describe('Gemini enrichment', () => {
+  it('asks for a strict two-bullet plain-language explanation', () => {
+    const prompt = buildPlainLanguagePrompt(signal('PLAIN'), 0.2)
+    expect(prompt).toContain('Return exactly two Markdown bullets and nothing else')
+    expect(prompt).toContain('**What it means:**')
+    expect(prompt).toContain('**What to watch:**')
+    expect(prompt).toContain('grade-7 reading level')
+    expect(prompt).toContain('Do not tell the reader to buy, sell, or trade')
+    expect(prompt).toContain('Do not repeat raw internal scores or confidence values')
+  })
+
   it('reports complete only when every symbol is enriched', async () => {
     const result = await enrichWithGemini([signal('COMPLETE1'), signal('COMPLETE2')], 0.2, {
       model: 'test-model', generate: async (prompt) => `Unique note for ${prompt.includes('COMPLETE1') ? 'one' : 'two'}`,
