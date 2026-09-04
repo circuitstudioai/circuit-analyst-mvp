@@ -41,6 +41,18 @@ try {
   if (signInError || !signedIn.session) throw new Error(signInError?.message || 'Test sign-in failed')
   const headers = { authorization: `Bearer ${signedIn.session.access_token}` }
 
+  const onboarding = await api('/api/me', {
+    method: 'PATCH',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      experienceLevel: 'self_directed',
+      watchlistSize: '6_15',
+      investingHorizon: 'weeks',
+      primaryJob: 'monitor_watchlist',
+    }),
+  })
+  if (onboarding.status !== 200 || !onboarding.body?.onboardingCompletedAt) throw new Error('Onboarding smoke failed')
+
   const me = await api('/api/me', { headers })
   if (me.status !== 200 || !Array.isArray(me.body?.watchlist)) throw new Error('Profile/watchlist smoke failed')
 
@@ -54,10 +66,17 @@ try {
   })
   if (analysis.status !== 200 || !analysis.body?.saved?.runId) throw new Error(`Analysis smoke failed (${analysis.status})`)
 
+  const reportOpened = await api('/api/events', {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ eventName: 'report_opened', runId: analysis.body.saved.runId, properties: { smoke: true } }),
+  })
+  if (reportOpened.status !== 200) throw new Error('Product event smoke failed')
+
   const feedback = await api('/api/feedback', {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ runId: analysis.body.saved.runId, symbol: 'NVDA', helpful: true }),
+    body: JSON.stringify({ runId: analysis.body.saved.runId, symbol: 'NVDA', helpful: true, reason: 'actionable' }),
   })
   if (feedback.status !== 200) throw new Error('Feedback smoke failed')
 
@@ -71,6 +90,8 @@ try {
     default_watchlist: me.body.watchlist,
     saved_watchlist: savedWatchlist.body.watchlist,
     analysis_run: analysis.body.saved.runId,
+    onboarding: true,
+    product_event: reportOpened.body.ok,
     feedback: feedback.body.ok,
     user_runs: runs.body.runs.length,
   }, null, 2)}\n`)

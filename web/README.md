@@ -27,6 +27,29 @@ npm run build
 npm run lint
 ```
 
+## Two-week beta validation layer
+
+Apply Supabase migrations before deploying this release. The validation layer
+adds a four-question onboarding flow, named beta cohorts, an allow-listed
+product event stream, richer report feedback, and activation tracking.
+
+Activation requires all four events: onboarding completed, watchlist saved,
+analysis completed, and report opened. The primary usefulness event is
+`decision_brief_used`, emitted by an explicit helpful rating or copying a full
+report. Daily sessions support repeat-use measurement without a third-party
+analytics SDK.
+
+Admins can retrieve the cohort scorecard at:
+
+```text
+GET /api/admin/validation?cohort=beta-2026-09
+```
+
+The scorecard reports activated testers, completed cycles, three-day users,
+two-week returners, helpful-rating rate, loss reaction, and willingness to pay.
+External testers should be placed in the named cohort; internal accounts should
+retain the `admin` role or be removed from cohort membership before launch.
+
 ## Data
 
 The default analysis uses Yahoo's public chart endpoint and requires no API key.

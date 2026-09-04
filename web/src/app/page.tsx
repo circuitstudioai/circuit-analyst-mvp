@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './page.module.css'
 import { AnalyzeResponse, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from './BetaAccess'
@@ -18,6 +18,13 @@ type SymbolSearchResult = {
   name: string
   exchange: string
   type: string
+}
+
+type FeedbackDraft = {
+  helpful: boolean
+  reason: string
+  comment: string
+  state: 'editing' | 'sending' | 'saved' | 'error'
 }
 
 function cardClass(decision: SignalRow['decision']) {
@@ -51,10 +58,14 @@ export default function HomePage() {
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
   const [error, setError] = useState<string>('')
   const [accessToken, setAccessToken] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<Record<string, string>>({})
+  const [feedback, setFeedback] = useState<Record<string, FeedbackDraft>>({})
+  const [generalFeedbackOpen, setGeneralFeedbackOpen] = useState(false)
+  const [generalComment, setGeneralComment] = useState('')
+  const [generalFeedbackState, setGeneralFeedbackState] = useState<'idle' | 'sending' | 'saved' | 'error'>('idle')
   const [symbolQuery, setSymbolQuery] = useState('')
   const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([])
   const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
+  const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
     setWatchlistText((current) => current === 'NVDA, AMD, SOFI, HIMS' ? symbols.join(', ') : current)
@@ -152,6 +163,26 @@ export default function HomePage() {
     }
   }, [accessToken])
 
+  const trackEvent = useCallback((eventName: string, fields: Record<string, unknown> = {}) => {
+    if (!accessToken) return
+    void fetch('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ eventName, ...fields }),
+    })
+  }, [accessToken])
+
+  useEffect(() => {
+    if (!result) return
+    const runKey = String(result.saved?.runId || result.shareId)
+    if (openedRun.current === runKey) return
+    openedRun.current = runKey
+    trackEvent('report_opened', {
+      runId: result.saved?.runId,
+      properties: { symbolCount: result.signals.length, cached: Boolean(result.cached) },
+    })
+  }, [result, trackEvent])
+
   async function runAnalysis(symbols = watchlist) {
     if (!accessToken) {
       setError('Sign in with a beta magic link to run analysis.')
@@ -184,15 +215,48 @@ export default function HomePage() {
     }
   }
 
-  async function submitFeedback(signal: SignalRow, helpful: boolean) {
+  function beginFeedback(signal: SignalRow, helpful: boolean) {
+    setFeedback((current) => ({
+      ...current,
+      [signal.symbol]: { helpful, reason: helpful ? 'actionable' : 'unclear', comment: '', state: 'editing' },
+    }))
+  }
+
+  async function submitFeedback(signal: SignalRow) {
     if (!accessToken) return
-    setFeedback((current) => ({ ...current, [signal.symbol]: 'sending' }))
+    const draft = feedback[signal.symbol]
+    if (!draft) return
+    setFeedback((current) => ({ ...current, [signal.symbol]: { ...draft, state: 'sending' } }))
     const response = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ runId: result?.saved?.runId, symbol: signal.symbol, helpful }),
+      body: JSON.stringify({
+        runId: result?.saved?.runId,
+        symbol: signal.symbol,
+        helpful: draft.helpful,
+        reason: draft.reason,
+        comment: draft.comment,
+      }),
     })
-    setFeedback((current) => ({ ...current, [signal.symbol]: response.ok ? 'saved' : 'error' }))
+    setFeedback((current) => ({
+      ...current,
+      [signal.symbol]: { ...draft, state: response.ok ? 'saved' : 'error' },
+    }))
+  }
+
+  async function submitGeneralFeedback() {
+    if (!accessToken || !generalComment.trim()) return
+    setGeneralFeedbackState('sending')
+    const response = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        eventName: 'beta_feedback_sent',
+        properties: { source: 'persistent_feedback', comment: generalComment.trim().slice(0, 1000) },
+      }),
+    })
+    setGeneralFeedbackState(response.ok ? 'saved' : 'error')
+    if (response.ok) setGeneralComment('')
   }
 
   function loadSample(symbols: string[]) {
@@ -206,6 +270,10 @@ export default function HomePage() {
       return `${s.symbol}: ${verdict(s)} / ${pct(s.confidence)} confidence\n${s.thesis}\nInvalidation: ${s.invalidation}\nNext: ${s.nextAction}`
     })
     void navigator.clipboard.writeText(lines.join('\n\n'))
+    trackEvent('decision_brief_used', {
+      runId: result.saved?.runId,
+      properties: { source: 'copy_report', symbolCount: result.signals.length },
+    })
   }
 
   return (
@@ -417,15 +485,71 @@ export default function HomePage() {
                   ? <pre className={styles.aiNote}>{signal.aiExplanation}</pre>
                   : <p className={styles.aiUnavailable}>AI enrichment unavailable{signal.aiErrorCode ? ` (${signal.aiErrorCode})` : ''}. The rule-based analysis above remains complete.</p>}
                 <div className={styles.feedbackRow}>
-                  <span>{feedback[signal.symbol] === 'saved' ? 'Feedback saved' : 'Useful for your decision?'}</span>
-                  <button type="button" onClick={() => submitFeedback(signal, true)} disabled={feedback[signal.symbol] === 'sending'}>Yes</button>
-                  <button type="button" onClick={() => submitFeedback(signal, false)} disabled={feedback[signal.symbol] === 'sending'}>No</button>
+                  <span>{feedback[signal.symbol]?.state === 'saved' ? 'Feedback saved—thank you.' : 'Useful for your decision?'}</span>
+                  {feedback[signal.symbol]?.state !== 'saved' && <>
+                    <button type="button" onClick={() => beginFeedback(signal, true)} aria-pressed={feedback[signal.symbol]?.helpful === true}>Yes</button>
+                    <button type="button" onClick={() => beginFeedback(signal, false)} aria-pressed={feedback[signal.symbol]?.helpful === false}>No</button>
+                  </>}
                 </div>
+                {feedback[signal.symbol]?.state !== 'saved' && feedback[signal.symbol] && (
+                  <div className={styles.feedbackDetail}>
+                    <label>
+                      {feedback[signal.symbol].helpful ? 'What helped most?' : 'What was missing or unclear?'}
+                      <select
+                        value={feedback[signal.symbol].reason}
+                        onChange={(event) => setFeedback((current) => ({ ...current, [signal.symbol]: { ...current[signal.symbol], reason: event.target.value } }))}
+                      >
+                        {feedback[signal.symbol].helpful ? <>
+                          <option value="actionable">Clear next action</option>
+                          <option value="other">Evidence, risk, or invalidation</option>
+                        </> : <>
+                          <option value="unclear">Unclear</option>
+                          <option value="too_generic">Too generic</option>
+                          <option value="wrong_data">Data looks wrong</option>
+                          <option value="missing_catalyst">Missing catalyst</option>
+                          <option value="other">Other</option>
+                        </>}
+                      </select>
+                    </label>
+                    <textarea
+                      value={feedback[signal.symbol].comment}
+                      onChange={(event) => setFeedback((current) => ({ ...current, [signal.symbol]: { ...current[signal.symbol], comment: event.target.value } }))}
+                      placeholder="Optional context"
+                      maxLength={1000}
+                      rows={2}
+                    />
+                    <button type="button" onClick={() => submitFeedback(signal)} disabled={feedback[signal.symbol].state === 'sending'}>
+                      {feedback[signal.symbol].state === 'sending' ? 'Sending…' : 'Send feedback'}
+                    </button>
+                    {feedback[signal.symbol].state === 'error' && <small>Could not save. Try again.</small>}
+                  </div>
+                )}
               </article>
             ))}
           </div>
         )}
       </section>
+
+      {accessToken && (
+        <button type="button" className={styles.feedbackLauncher} onClick={() => setGeneralFeedbackOpen(true)}>
+          Send beta feedback
+        </button>
+      )}
+      {generalFeedbackOpen && (
+        <div className={styles.feedbackModalBackdrop} role="dialog" aria-modal="true" aria-labelledby="beta-feedback-title">
+          <div className={styles.feedbackModal}>
+            <button type="button" className={styles.modalClose} onClick={() => { setGeneralFeedbackOpen(false); setGeneralFeedbackState('idle') }} aria-label="Close feedback">×</button>
+            <p className={styles.kicker}>Beta line</p>
+            <h2 id="beta-feedback-title">Tell us where the desk broke down.</h2>
+            <p>Bugs, confusing language, missing context, or moments that saved you time—all signal, no ceremony.</p>
+            <textarea value={generalComment} onChange={(event) => setGeneralComment(event.target.value)} maxLength={1000} rows={5} placeholder="What happened?" />
+            <button type="button" onClick={submitGeneralFeedback} disabled={!generalComment.trim() || generalFeedbackState === 'sending'}>
+              {generalFeedbackState === 'sending' ? 'Sending…' : generalFeedbackState === 'saved' ? 'Feedback saved' : 'Send to the product team'}
+            </button>
+            {generalFeedbackState === 'error' && <small>Could not save. Try again.</small>}
+          </div>
+        </div>
+      )}
 
       <footer className={styles.footer}>
         <strong>Built by Circuit Studio AI.</strong>
