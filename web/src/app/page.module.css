@@ -115,6 +115,22 @@
   padding: 9px 11px;
 }
 
+.presenterAuthForm {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.authForm .authModeButton {
+  grid-column: 1 / -1;
+  min-height: auto;
+  border: 0;
+  background: transparent;
+  color: #d8e8dc;
+  padding: 2px 0;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .authForm input {
   min-width: 0;
   background: #fffdf5;
@@ -979,6 +995,10 @@
   .feedbackLauncher {
     right: 12px;
     bottom: 12px;
+  }
+
+  .presenterAuthForm {
+    grid-template-columns: 1fr;
   }
 }
 
