@@ -14,6 +14,8 @@ if (!baseUrl || !supabaseUrl || !publishableKey || !serviceRoleKey) {
 const suffix = randomBytes(6).toString('hex')
 const email = `circuit-beta-smoke-${suffix}@example.com`
 const password = `Smoke-${randomBytes(18).toString('base64url')}!`
+const smokeSymbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
+const smokeSymbol = smokeSymbols[Number.parseInt(suffix.slice(0, 2), 16) % smokeSymbols.length]
 const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 const publicClient = createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } })
 let userId
@@ -57,14 +59,16 @@ try {
   if (me.status !== 200 || !Array.isArray(me.body?.watchlist)) throw new Error('Profile/watchlist smoke failed')
 
   const savedWatchlist = await api('/api/me', {
-    method: 'PUT', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ symbols: ['NVDA', 'AMD'] }),
+    method: 'PUT', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ symbols: [smokeSymbol, 'AMD'] }),
   })
   if (savedWatchlist.status !== 200) throw new Error('Watchlist update smoke failed')
 
   const analysis = await api('/api/analyze', {
-    method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ watchlist: ['NVDA'] }),
+    method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ watchlist: [smokeSymbol] }),
   })
-  if (analysis.status !== 200 || !analysis.body?.saved?.runId) throw new Error(`Analysis smoke failed (${analysis.status})`)
+  if (analysis.status !== 200 || !analysis.body?.saved?.runId) {
+    throw new Error(`Analysis smoke failed (${analysis.status}): ${JSON.stringify(analysis.body?.saved || null)}`)
+  }
 
   const reportOpened = await api('/api/events', {
     method: 'POST',
@@ -76,7 +80,7 @@ try {
   const feedback = await api('/api/feedback', {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ runId: analysis.body.saved.runId, symbol: 'NVDA', helpful: true, reason: 'actionable' }),
+    body: JSON.stringify({ runId: analysis.body.saved.runId, symbol: smokeSymbol, helpful: true, reason: 'actionable' }),
   })
   if (feedback.status !== 200) throw new Error('Feedback smoke failed')
 
