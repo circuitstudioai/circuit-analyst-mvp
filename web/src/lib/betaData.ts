@@ -48,6 +48,14 @@ export async function finishAnalysisRequest(
   }).eq('id', requestId)
 }
 
+export async function userOwnsRun(userId: string, runId: number) {
+  const supabase = serviceClient()
+  if (!supabase) return false
+  const { data } = await supabase.from('analysis_requests')
+    .select('id').eq('user_id', userId).eq('run_id', runId).limit(1).maybeSingle()
+  return Boolean(data)
+}
+
 export async function userBetaState(userId: string) {
   const supabase = serviceClient()
   if (!supabase) return { profile: null, watchlist: [], usage: null }

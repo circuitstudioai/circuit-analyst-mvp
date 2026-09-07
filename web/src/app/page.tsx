@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './page.module.css'
-import { AnalyzeResponse, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
+import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from './BetaAccess'
 
 const samples = [
@@ -57,6 +57,8 @@ export default function HomePage() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
   const [error, setError] = useState<string>('')
+  const [deskConsensus, setDeskConsensus] = useState<DeskConsensus[]>([])
+  const [deskEngines, setDeskEngines] = useState<DeskEngine[]>([])
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Record<string, FeedbackDraft>>({})
   const [generalFeedbackOpen, setGeneralFeedbackOpen] = useState(false)
@@ -199,6 +201,17 @@ export default function HomePage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
       setResult(data)
+      const runId = Number(data?.saved?.runId)
+      if (runId) {
+        const deskResponse = await fetch(`/api/desk?runId=${runId}`, {
+          cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` },
+        })
+        if (deskResponse.ok) {
+          const desk = await deskResponse.json()
+          setDeskConsensus(Array.isArray(desk?.consensus) ? desk.consensus : [])
+          setDeskEngines(Array.isArray(desk?.engines) ? desk.engines : [])
+        }
+      }
       void fetch('/api/me', {
         method: 'PUT',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
@@ -404,6 +417,44 @@ export default function HomePage() {
               : 'Diffs appear after Supabase has at least two saved runs.'}
           </p>
         </div>
+      </section>
+
+      <section className={styles.results}>
+        <div className={styles.resultHeader}>
+          <div>
+            <p className={styles.kicker}>Multi-engine control desk</p>
+            <h2>{deskConsensus.length ? `${deskConsensus.length} consensus views` : 'Awaiting independent engines'}</h2>
+          </div>
+          <span className={styles.meta}>{deskEngines.length} engine outputs</span>
+        </div>
+        {deskConsensus.length ? (
+          <div className={styles.consensusGrid}>
+            {deskConsensus.map((view) => (
+              <article key={view.ticker} className={styles.consensusCard}>
+                <div className={styles.cardHeader}>
+                  <div><span className={styles.symbol}>{view.ticker}</span><h3>{view.direction}</h3></div>
+                  <span className={styles.score}>{Math.round(view.agreement_score * 100)}% align</span>
+                </div>
+                <p className={styles.thesis}>{view.rationale}</p>
+                <div className={styles.engineStrip}>
+                  {deskEngines.filter((engine) => engine.ticker === view.ticker).map((engine) => (
+                    <span key={engine.engine_name}><strong>{engine.engine_name.replaceAll('_', ' ')}</strong>{engine.direction} · {engine.confidence}%</span>
+                  ))}
+                </div>
+                <div className={styles.categoryGrid}>
+                  {(view.category_consensus || []).map((category) => (
+                    <span key={category.category} className={category.conflict_flag ? styles.categoryConflict : undefined}>
+                      <strong>{category.category}</strong>{category.direction} · {Math.round(category.agreement_score * 100)}%
+                    </span>
+                  ))}
+                </div>
+                <div className={styles.callout}><strong>Next action</strong><span>{view.next_action}</span></div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.empty}><strong>No synthetic consensus.</strong><span>The desk will show agreement only after at least two independent engine outputs arrive for the same run and ticker.</span></div>
+        )}
       </section>
 
       <section className={styles.results}>
