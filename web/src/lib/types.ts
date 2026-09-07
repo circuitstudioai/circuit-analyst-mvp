@@ -49,6 +49,35 @@ export type AnalyzeResponse = {
   }
 }
 
+export type DeskConsensus = {
+  ticker: string
+  direction: 'bullish' | 'neutral' | 'bearish'
+  agreement_score: number
+  confidence_score: number
+  freshness_score: number
+  conflict_flag: boolean
+  engines_total: number
+  rationale: string
+  next_action: string
+  category_consensus?: Array<{
+    category: string
+    direction: 'bullish' | 'neutral' | 'bearish'
+    agreement_score: number
+    confidence_score: number
+    engines_total: number
+    conflict_flag: boolean
+  }>
+}
+
+export type DeskEngine = {
+  ticker: string
+  engine_name: string
+  direction: 'bullish' | 'neutral' | 'bearish'
+  confidence: number
+  thesis_summary?: string
+  run_timestamp: string
+}
+
 export type RecentRun = {
   id: number
   as_of: string

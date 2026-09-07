@@ -127,6 +127,14 @@ export async function latestEngineOutputsByTicker(ticker: string, runId: number)
   return data || []
 }
 
+export async function engineOutputsForRun(runId: number) {
+  const sb = serviceClient()
+  if (!sb) return []
+  const { data } = await sb.from('engine_outputs').select('*').eq('run_id', runId)
+    .order('ticker').order('engine_name')
+  return data || []
+}
+
 export async function saveConsensus(result: ConsensusResult) {
   const sb = serviceClient()
   if (!sb) return { skipped: true }
