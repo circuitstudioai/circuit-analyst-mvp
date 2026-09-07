@@ -60,6 +60,7 @@ create table if not exists consensus_signals (
   engines_bearish int not null,
   rationale text,
   next_action text,
+  category_consensus jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
