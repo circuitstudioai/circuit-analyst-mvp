@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { computeConsensus } from '@/lib/consensus'
+import { buildMaterialChangeBrief } from '@/lib/dailyBrief'
 import { analyzeWatchlist } from '@/lib/engine'
-import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
-import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
+import { runMultiEngineAnalysis } from '@/lib/multiEngine'
 import { verifyJobRequest } from '@/lib/jobAuth'
-import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
+import { completeRun, ingestEngineOutputs, latestConsensusDiff, saveConsensus, saveDailyBrief, saveProviderUsage, saveRun } from '@/lib/supabase'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 40
@@ -28,24 +28,32 @@ async function runRefresh(req: NextRequest, input: unknown) {
     }
 
     const base = await analyzeWatchlist(watchlist)
-    const enrichment = await enrichWithGemini(base.signals, base.regimeScore)
-    const analysis = applyGeminiEnrichment(base, enrichment)
+    const analysis = base
     const savedRun = await saveRun(analysis)
 
     if (!savedRun.ok || !savedRun.runId) {
       return NextResponse.json({ error: savedRun.error || 'run persistence failed', savedRun }, { status: 502 })
     }
 
-    const engineOutputs = ruleEngineOutputsFromAnalysis(analysis, savedRun.runId)
+    const engineOutputs = await runMultiEngineAnalysis(analysis, savedRun.runId)
     const ingest = await ingestEngineOutputs(engineOutputs)
-    const consensus = engineOutputs
-      .map((row) => computeConsensus([row]))
+    const byTicker = new Map<string, typeof engineOutputs>()
+    for (const row of engineOutputs) byTicker.set(row.ticker, [...(byTicker.get(row.ticker) || []), row])
+    const consensus = [...byTicker.values()]
+      .map((rows) => computeConsensus(rows))
       .filter((row) => row !== null)
 
     const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
+    const diffs = await latestConsensusDiff()
+    const brief = buildMaterialChangeBrief(savedRun.runId, consensus, engineOutputs, diffs, analysis.asOf)
+    const briefWrite = await saveDailyBrief(brief)
+    const researchUsage = engineOutputs.reduce((total, row) => total + Number((row.raw_payload as { usage?: { total_tokens?: number } } | null)?.usage?.total_tokens || 0), 0)
+    const usageWrite = researchUsage ? await saveProviderUsage({ provider: 'gemini', route: '/api/jobs/refresh:ai_research', units: researchUsage }) : { skipped: true }
     const errors = [
       ...('error' in ingest && ingest.error ? [ingest.error] : []),
       ...consensusWrites.flatMap((row) => row.error ? [row.error] : []),
+      ...('error' in briefWrite && briefWrite.error ? [briefWrite.error] : []),
+      ...('error' in usageWrite && usageWrite.error ? [usageWrite.error] : []),
     ]
     const completion = await completeRun(
       savedRun.runId,
@@ -69,6 +77,8 @@ async function runRefresh(req: NextRequest, input: unknown) {
         skipped: consensusWrites.filter((row) => row.skipped).length,
         errors: consensusWrites.filter((row) => row.error).map((row) => row.error),
       },
+      dailyBrief: briefWrite,
+      providerUsage: usageWrite,
       pipeline: analysis.pipeline,
     })
   } catch (e: unknown) {

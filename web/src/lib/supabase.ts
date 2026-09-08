@@ -177,6 +177,13 @@ export async function saveDailyBrief(payload: {
   return { ok: true }
 }
 
+export async function saveProviderUsage(payload: { provider: string; route: string; units: number; cost_usd?: number }) {
+  const sb = serviceClient()
+  if (!sb) return { skipped: true }
+  const { error } = await sb.from('provider_usage').insert({ ...payload, cost_usd: payload.cost_usd || 0 })
+  return error ? { error: error.message } : { ok: true }
+}
+
 export async function latestDailyBrief(runId?: number) {
   const sb = serviceClient()
   if (!sb) return null
