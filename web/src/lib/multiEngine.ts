@@ -4,7 +4,7 @@ import { EvidenceItem, EvidencePacket, packet, validateEvidencePacket } from './
 import { fetchSecEvidence } from './secFundamentals'
 import { AnalyzeResponse, SignalRow } from './types'
 
-type ResearchResponse = { view: 'bullish' | 'neutral' | 'bearish'; confidence: number; thesis: string; bull_case: string[]; bear_case: string[]; risks: string[]; catalysts: string[]; cited_evidence_ids: string[] }
+type ResearchResponse = { view: 'bullish' | 'neutral' | 'bearish'; confidence: number; thesis: string; cited_evidence_ids: string[] }
 
 function asStrings(value: unknown) {
   if (Array.isArray(value)) return value.map(String).slice(0, 12)
@@ -68,7 +68,7 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
   try {
     const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
     const ai = new GoogleGenAI({ apiKey: key })
-    const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one object per packet, with keys view, confidence (0-100), thesis, bull_case, bear_case, risks, catalysts, cited_evidence_ids. Every factual statement must cite an ID from its packet. Each thesis must be at most 25 words. Each case/risk/catalyst array must contain at most one sentence of at most 15 words. If evidence is insufficient, use neutral and low confidence. Be terse so the complete JSON fits the response limit.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
+    const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one compact object per packet, with exactly four keys: view, confidence (0-100), thesis, cited_evidence_ids. Every factual statement must cite an ID from its packet. Each thesis must be at most 20 words. Cite at most three IDs. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
     const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
     const parsed = JSON.parse(response.text || '[]') as ResearchResponse[]
     if (!Array.isArray(parsed) || parsed.length !== inputs.length) throw new Error('AI response count mismatch')
@@ -79,7 +79,7 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
       const citedIds = asStrings(research.cited_evidence_ids)
       if (!['bullish', 'neutral', 'bearish'].includes(research.view) || !Number.isFinite(research.confidence) || research.confidence < 0 || research.confidence > 100 || !citedIds.length || citedIds.some((id) => !allowed.has(id))) throw new Error(`${signal.symbol} AI response failed evidence validation`)
       const requestUsage = index === 0 ? { prompt_tokens: usage?.promptTokenCount || 0, output_tokens: usage?.candidatesTokenCount || 0, total_tokens: usage?.totalTokenCount || 0 } : undefined
-      return { ...base(runId, signal, asOf, 'ai_research'), direction: research.view, confidence: Math.round(research.confidence), thesis_summary: String(research.thesis || 'Evidence is mixed.'), bull_case: asStrings(research.bull_case), bear_case: asStrings(research.bear_case), risk_flags: asStrings(research.risks), catalysts: asStrings(research.catalysts), suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: citedIds, model, usage: requestUsage, category_views: { research: { direction: research.view, confidence: research.confidence } } } } as EngineOutput
+      return { ...base(runId, signal, asOf, 'ai_research'), direction: research.view, confidence: Math.round(research.confidence), thesis_summary: String(research.thesis || 'Evidence is mixed.'), bull_case: [], bear_case: [], risk_flags: [], catalysts: [], suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: citedIds, model, usage: requestUsage, category_views: { research: { direction: research.view, confidence: research.confidence } } } } as EngineOutput
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Gemini research failed'
