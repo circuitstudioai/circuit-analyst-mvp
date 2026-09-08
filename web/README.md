@@ -16,7 +16,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ## Optional integrations
 
 - `GEMINI_API_KEY`: adds concise analyst notes to each signal.
-- `GEMINI_MODEL`: overrides the Gemini model (defaults to stable `gemini-2.5-flash`).
+- `GEMINI_MODEL`: overrides the Gemini model (defaults to stable `gemini-3.5-flash`).
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
 
