@@ -2,13 +2,15 @@ import { ConsensusResult, EngineOutput } from './consensus'
 import { ConsensusDiffRow } from './supabase'
 
 export function buildMaterialChangeBrief(runId: number, consensus: ConsensusResult[], outputs: EngineOutput[], diffs: ConsensusDiffRow[], asOf: string) {
-  const material = diffs.filter((row) => row.change_type === 'flip' || row.change_type === 'new' || row.latest_conflict || Math.abs(row.confidence_delta || 0) >= 0.08 || Math.abs(row.agreement_delta || 0) >= 0.08)
+  const currentTickers = new Set(consensus.map((row) => row.ticker))
+  const material = diffs.filter((row) => currentTickers.has(row.ticker) && (row.change_type === 'flip' || row.change_type === 'new' || row.latest_conflict || Math.abs(row.confidence_delta || 0) >= 0.08 || Math.abs(row.agreement_delta || 0) >= 0.08))
   const topConviction = [...consensus].filter((row) => row.engines_total >= 2).sort((a, b) => b.confidence_score - a.confidence_score).slice(0, 5)
   const highConflict = consensus.filter((row) => row.conflict_flag).slice(0, 5)
-  const keyCatalysts = outputs.flatMap((row) => (row.catalysts || []).map((catalyst) => ({ ticker: row.ticker, engine: row.engine_name, catalyst }))).slice(0, 10)
+  const keyCatalysts = [...new Map(outputs.flatMap((row) => (row.catalysts || []).map((catalyst) => [row.ticker, { ticker: row.ticker, engine: row.engine_name, catalyst }] as const))).values()].slice(0, 10)
+  const coverageLabel = `${consensus.length} covered ticker${consensus.length === 1 ? '' : 's'}`
   const summary = material.length
-    ? `${material.length} material change${material.length === 1 ? '' : 's'} across ${consensus.length} covered tickers; ${highConflict.length} currently in conflict.`
-    : `No material consensus changes across ${consensus.length} covered tickers; ${highConflict.length} currently in conflict.`
+    ? `${material.length} material change${material.length === 1 ? '' : 's'} across ${coverageLabel}; ${highConflict.length} currently in conflict.`
+    : `No material consensus changes across ${coverageLabel}; ${highConflict.length} currently in conflict.`
   const title = `Circuit Market Desk — ${asOf.slice(0, 10)} Daily Brief`
   const markdown = [
     `# ${title}`, '', summary, '', '## Material changes',
