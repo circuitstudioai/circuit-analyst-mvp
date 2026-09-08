@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { computeConsensus } from '@/lib/consensus'
 import { analyzeWatchlist } from '@/lib/engine'
-import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
+import { runMultiEngineAnalysis } from '@/lib/multiEngine'
 import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
 import { verifyJobRequest } from '@/lib/jobAuth'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
@@ -36,10 +36,12 @@ async function runRefresh(req: NextRequest, input: unknown) {
       return NextResponse.json({ error: savedRun.error || 'run persistence failed', savedRun }, { status: 502 })
     }
 
-    const engineOutputs = ruleEngineOutputsFromAnalysis(analysis, savedRun.runId)
+    const engineOutputs = await runMultiEngineAnalysis(analysis, savedRun.runId)
     const ingest = await ingestEngineOutputs(engineOutputs)
-    const consensus = engineOutputs
-      .map((row) => computeConsensus([row]))
+    const byTicker = new Map<string, typeof engineOutputs>()
+    for (const row of engineOutputs) byTicker.set(row.ticker, [...(byTicker.get(row.ticker) || []), row])
+    const consensus = [...byTicker.values()]
+      .map((rows) => computeConsensus(rows))
       .filter((row) => row !== null)
 
     const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
