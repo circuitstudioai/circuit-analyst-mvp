@@ -106,7 +106,10 @@ export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: n
   }))
   const batches: typeof prepared[] = []
   for (let index = 0; index < prepared.length; index += 4) batches.push(prepared.slice(index, index + 4))
-  const researched = await Promise.all(batches.map((batch) => researchOutputs(runId, batch.map(({ signal, researchEvidence }) => ({ signal, evidence: researchEvidence })), analysis.asOf)))
+  const researched: EngineOutput[][] = []
+  for (const batch of batches) {
+    researched.push(await researchOutputs(runId, batch.map(({ signal, researchEvidence }) => ({ signal, evidence: researchEvidence })), analysis.asOf))
+  }
   const researchByTicker = new Map(researched.flat().map((row) => [row.ticker, row]))
   return prepared.flatMap(({ signal, technical, fundamentals }) => [technical, fundamentals, researchByTicker.get(signal.symbol)!])
 }
