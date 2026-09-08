@@ -3,11 +3,11 @@ import { EvidenceItem, EvidencePacket, packet } from './evidence'
 const TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json'
 const FACTS_URL = (cik: string) => `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`
 const CONCEPTS = {
-  revenue: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'USD'],
-  net_income: ['NetIncomeLoss', 'USD'],
-  assets: ['Assets', 'USD'],
-  cash: ['CashAndCashEquivalentsAtCarryingValue', 'USD'],
-  shares_outstanding: ['EntityCommonStockSharesOutstanding', 'shares'],
+  revenue: ['us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD'],
+  net_income: ['us-gaap', 'NetIncomeLoss', 'USD'],
+  assets: ['us-gaap', 'Assets', 'USD'],
+  cash: ['us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD'],
+  shares_outstanding: ['dei', 'EntityCommonStockSharesOutstanding', 'shares'],
 } as const
 
 let tickerCache: { expires: number; rows: Record<string, { cik_str: number; ticker: string }> } | null = null
@@ -35,9 +35,9 @@ export async function fetchSecEvidence(ticker: string, asOf: string): Promise<Ev
   const cik = await cikForTicker(ticker)
   const url = FACTS_URL(cik)
   const payload = await json(url)
-  const facts = payload?.facts?.['us-gaap'] || {}
-  const items: EvidenceItem[] = Object.entries(CONCEPTS).map(([metric, [concept, unit]]) => {
-    const observations = facts?.[concept]?.units?.[unit] || []
+  const facts = payload?.facts || {}
+  const items: EvidenceItem[] = Object.entries(CONCEPTS).map(([metric, [namespace, concept, unit]]) => {
+    const observations = facts?.[namespace]?.[concept]?.units?.[unit] || []
     const candidates = observations.filter((row: Record<string, unknown>) => row.filed && row.val !== null && row.val !== undefined)
     candidates.sort((a: Record<string, unknown>, b: Record<string, unknown>) => `${b.filed}|${b.end}`.localeCompare(`${a.filed}|${a.end}`))
     const row = candidates[0]
@@ -51,7 +51,7 @@ export async function fetchSecEvidence(ticker: string, asOf: string): Promise<Ev
       period: row.fy ? `FY${row.fy}` : String(row.end || 'latest'), confidence: 0.98,
       freshness_seconds: Math.max(0, Math.floor((new Date(asOf).getTime() - new Date(publishedAt).getTime()) / 1000)),
       missing_status: 'present', source: { provider: 'sec_companyfacts', url, retrieved_at: asOf, published_at: publishedAt, observed_at: row.end ? String(row.end) : null },
-      notes: `SEC concept ${concept}; form ${row.form || 'unknown'}`,
+      notes: `SEC concept ${namespace}:${concept}; form ${row.form || 'unknown'}`,
     }
   })
   return packet(ticker, asOf, 'sec_fundamentals', items, { cik })
