@@ -66,7 +66,7 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
   const key = process.env.GEMINI_API_KEY
   if (!key) return inputs.map(({ signal, evidence }) => researchAbstention(runId, signal, asOf, evidence, 'Gemini is not configured'))
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
     const ai = new GoogleGenAI({ apiKey: key })
     const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one compact object per packet, with exactly four keys: view, confidence (0-100), thesis, cited_evidence_ids. Every factual statement must cite an ID from its packet. Each thesis must be at most 20 words. Cite at most three IDs. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
     const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
