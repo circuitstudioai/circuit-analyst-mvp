@@ -6,6 +6,11 @@ import { AnalyzeResponse, SignalRow } from './types'
 
 type ResearchResponse = { view: 'bullish' | 'neutral' | 'bearish'; confidence: number; thesis: string; bull_case: string[]; bear_case: string[]; risks: string[]; catalysts: string[]; cited_evidence_ids: string[] }
 
+function asStrings(value: unknown) {
+  if (Array.isArray(value)) return value.map(String).slice(0, 12)
+  return value ? [String(value)] : []
+}
+
 function base(runId: number, signal: SignalRow, asOf: string, engine: string): Omit<EngineOutput, 'direction' | 'confidence'> {
   return { run_id: runId, ticker: signal.symbol, market: 'US', run_timestamp: asOf, engine_name: engine, time_horizon: engine === 'technical_regime' ? 'swing' : 'long_term', source_tag: 'scheduled_multi_engine' }
 }
@@ -71,9 +76,10 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
     return parsed.map((research, index) => {
       const { signal, evidence } = inputs[index]
       const allowed = new Set(evidence.items.map((item) => item.id))
-      if (!['bullish', 'neutral', 'bearish'].includes(research.view) || !Number.isFinite(research.confidence) || research.confidence < 0 || research.confidence > 100 || !research.cited_evidence_ids?.length || research.cited_evidence_ids.some((id) => !allowed.has(id))) throw new Error(`${signal.symbol} AI response failed evidence validation`)
+      const citedIds = asStrings(research.cited_evidence_ids)
+      if (!['bullish', 'neutral', 'bearish'].includes(research.view) || !Number.isFinite(research.confidence) || research.confidence < 0 || research.confidence > 100 || !citedIds.length || citedIds.some((id) => !allowed.has(id))) throw new Error(`${signal.symbol} AI response failed evidence validation`)
       const requestUsage = index === 0 ? { prompt_tokens: usage?.promptTokenCount || 0, output_tokens: usage?.candidatesTokenCount || 0, total_tokens: usage?.totalTokenCount || 0 } : undefined
-      return { ...base(runId, signal, asOf, 'ai_research'), direction: research.view, confidence: Math.round(research.confidence), thesis_summary: research.thesis, bull_case: research.bull_case || [], bear_case: research.bear_case || [], risk_flags: research.risks || [], catalysts: research.catalysts || [], suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: research.cited_evidence_ids, model, usage: requestUsage, category_views: { research: { direction: research.view, confidence: research.confidence } } } } as EngineOutput
+      return { ...base(runId, signal, asOf, 'ai_research'), direction: research.view, confidence: Math.round(research.confidence), thesis_summary: String(research.thesis || 'Evidence is mixed.'), bull_case: asStrings(research.bull_case), bear_case: asStrings(research.bear_case), risk_flags: asStrings(research.risks), catalysts: asStrings(research.catalysts), suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: citedIds, model, usage: requestUsage, category_views: { research: { direction: research.view, confidence: research.confidence } } } } as EngineOutput
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Gemini research failed'
