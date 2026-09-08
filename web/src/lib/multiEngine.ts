@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { EvidenceItem, EvidencePacket, packet, validateEvidencePacket } from './evidence'
 import { fetchSecEvidence } from './secFundamentals'
@@ -68,8 +68,8 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
   try {
     const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
     const ai = new GoogleGenAI({ apiKey: key })
-    const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one object per packet, with keys view, confidence (0-100), thesis, bull_case, bear_case, risks, catalysts, cited_evidence_ids. Every factual statement must be supported by an ID from its packet. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200 } })
+    const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one object per packet, with keys view, confidence (0-100), thesis, bull_case, bear_case, risks, catalysts, cited_evidence_ids. Every factual statement must cite an ID from its packet. Each thesis must be at most 25 words. Each case/risk/catalyst array must contain at most one sentence of at most 15 words. If evidence is insufficient, use neutral and low confidence. Be terse so the complete JSON fits the response limit.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
+    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
     const parsed = JSON.parse(response.text || '[]') as ResearchResponse[]
     if (!Array.isArray(parsed) || parsed.length !== inputs.length) throw new Error('AI response count mismatch')
     const usage = response.usageMetadata
