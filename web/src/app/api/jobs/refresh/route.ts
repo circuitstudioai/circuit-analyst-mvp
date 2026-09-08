@@ -3,7 +3,6 @@ import { computeConsensus } from '@/lib/consensus'
 import { buildMaterialChangeBrief } from '@/lib/dailyBrief'
 import { analyzeWatchlist } from '@/lib/engine'
 import { runMultiEngineAnalysis } from '@/lib/multiEngine'
-import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
 import { verifyJobRequest } from '@/lib/jobAuth'
 import { completeRun, ingestEngineOutputs, latestConsensusDiff, saveConsensus, saveDailyBrief, saveProviderUsage, saveRun } from '@/lib/supabase'
 
@@ -29,8 +28,7 @@ async function runRefresh(req: NextRequest, input: unknown) {
     }
 
     const base = await analyzeWatchlist(watchlist)
-    const enrichment = await enrichWithGemini(base.signals, base.regimeScore)
-    const analysis = applyGeminiEnrichment(base, enrichment)
+    const analysis = base
     const savedRun = await saveRun(analysis)
 
     if (!savedRun.ok || !savedRun.runId) {

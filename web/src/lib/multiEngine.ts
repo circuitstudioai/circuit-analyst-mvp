@@ -53,27 +53,36 @@ async function fundamentalsOutput(runId: number, signal: SignalRow, asOf: string
   }
 }
 
-async function researchOutput(runId: number, signal: SignalRow, asOf: string, evidence: EvidencePacket): Promise<EngineOutput> {
+function researchAbstention(runId: number, signal: SignalRow, asOf: string, evidence: EvidencePacket, message: string): EngineOutput {
+  return { ...base(runId, signal, asOf, 'ai_research'), direction: 'neutral', confidence: 0, thesis_summary: 'AI research engine abstained because grounded research was unavailable.', risk_flags: [message], raw_payload: { evidence_packet: evidence, abstained: true, category_views: { research: { direction: 'neutral', confidence: 0 } } } }
+}
+
+async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow; evidence: EvidencePacket }>, asOf: string): Promise<EngineOutput[]> {
   const key = process.env.GEMINI_API_KEY
-  if (!key) return { ...base(runId, signal, asOf, 'ai_research'), direction: 'neutral', confidence: 0, thesis_summary: 'AI research engine abstained because Gemini is not configured.', raw_payload: { evidence_packet: evidence, abstained: true, category_views: { research: { direction: 'neutral', confidence: 0 } } } }
+  if (!key) return inputs.map(({ signal, evidence }) => researchAbstention(runId, signal, asOf, evidence, 'Gemini is not configured'))
   try {
     const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
     const ai = new GoogleGenAI({ apiKey: key })
-    const prompt = `Analyze only this evidence packet. Return strict JSON with keys view, confidence (0-100), thesis, bull_case, bear_case, risks, catalysts, cited_evidence_ids. Every factual statement must be supported by an ID from the packet. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(evidence)}`
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 700 } })
-    const parsed = JSON.parse(response.text || '{}') as ResearchResponse
-    const allowed = new Set(evidence.items.map((item) => item.id))
-    if (!['bullish', 'neutral', 'bearish'].includes(parsed.view) || !Number.isFinite(parsed.confidence) || parsed.confidence < 0 || parsed.confidence > 100 || !parsed.cited_evidence_ids?.length || parsed.cited_evidence_ids.some((id) => !allowed.has(id))) throw new Error('AI response failed evidence validation')
+    const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one object per packet, with keys view, confidence (0-100), thesis, bull_case, bear_case, risks, catalysts, cited_evidence_ids. Every factual statement must be supported by an ID from its packet. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
+    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200 } })
+    const parsed = JSON.parse(response.text || '[]') as ResearchResponse[]
+    if (!Array.isArray(parsed) || parsed.length !== inputs.length) throw new Error('AI response count mismatch')
     const usage = response.usageMetadata
-    return { ...base(runId, signal, asOf, 'ai_research'), direction: parsed.view, confidence: Math.round(parsed.confidence), thesis_summary: parsed.thesis, bull_case: parsed.bull_case || [], bear_case: parsed.bear_case || [], risk_flags: parsed.risks || [], catalysts: parsed.catalysts || [], suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: parsed.cited_evidence_ids, model, usage: { prompt_tokens: usage?.promptTokenCount || 0, output_tokens: usage?.candidatesTokenCount || 0, total_tokens: usage?.totalTokenCount || 0 }, category_views: { research: { direction: parsed.view, confidence: parsed.confidence } } } }
+    return parsed.map((research, index) => {
+      const { signal, evidence } = inputs[index]
+      const allowed = new Set(evidence.items.map((item) => item.id))
+      if (!['bullish', 'neutral', 'bearish'].includes(research.view) || !Number.isFinite(research.confidence) || research.confidence < 0 || research.confidence > 100 || !research.cited_evidence_ids?.length || research.cited_evidence_ids.some((id) => !allowed.has(id))) throw new Error(`${signal.symbol} AI response failed evidence validation`)
+      const requestUsage = index === 0 ? { prompt_tokens: usage?.promptTokenCount || 0, output_tokens: usage?.candidatesTokenCount || 0, total_tokens: usage?.totalTokenCount || 0 } : undefined
+      return { ...base(runId, signal, asOf, 'ai_research'), direction: research.view, confidence: Math.round(research.confidence), thesis_summary: research.thesis, bull_case: research.bull_case || [], bear_case: research.bear_case || [], risk_flags: research.risks || [], catalysts: research.catalysts || [], suggested_next_action: 'Investigate disagreements and thesis invalidators.', raw_payload: { evidence_packet: evidence, cited_evidence_ids: research.cited_evidence_ids, model, usage: requestUsage, category_views: { research: { direction: research.view, confidence: research.confidence } } } } as EngineOutput
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Gemini research failed'
-    return { ...base(runId, signal, asOf, 'ai_research'), direction: 'neutral', confidence: 0, thesis_summary: 'AI research engine abstained after evidence validation failed.', risk_flags: [message], raw_payload: { evidence_packet: evidence, abstained: true, category_views: { research: { direction: 'neutral', confidence: 0 } } } }
+    return inputs.map(({ signal, evidence }) => researchAbstention(runId, signal, asOf, evidence, message))
   }
 }
 
 export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: number) {
-  const groups = await Promise.all(analysis.signals.map(async (signal) => {
+  const prepared = await Promise.all(analysis.signals.map(async (signal) => {
     const technical = technicalOutput(runId, signal, analysis.asOf)
     const fundamentals = await fundamentalsOutput(runId, signal, analysis.asOf)
     const technicalEvidence = (technical.raw_payload as { evidence_packet: EvidencePacket }).evidence_packet
@@ -83,7 +92,11 @@ export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: n
       const errors = validateEvidencePacket(evidence)
       if (errors.length) throw new Error(`${signal.symbol} evidence invalid: ${errors.join('; ')}`)
     }
-    return [technical, fundamentals, await researchOutput(runId, signal, analysis.asOf, researchEvidence)]
+    return { signal, technical, fundamentals, researchEvidence }
   }))
-  return groups.flat()
+  const batches: typeof prepared[] = []
+  for (let index = 0; index < prepared.length; index += 4) batches.push(prepared.slice(index, index + 4))
+  const researched = await Promise.all(batches.map((batch) => researchOutputs(runId, batch.map(({ signal, researchEvidence }) => ({ signal, evidence: researchEvidence })), analysis.asOf)))
+  const researchByTicker = new Map(researched.flat().map((row) => [row.ticker, row]))
+  return prepared.flatMap(({ signal, technical, fundamentals }) => [technical, fundamentals, researchByTicker.get(signal.symbol)!])
 }
