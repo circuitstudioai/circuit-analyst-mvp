@@ -93,7 +93,11 @@ export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: n
     const fundamentals = await fundamentalsOutput(runId, signal, analysis.asOf)
     const technicalEvidence = (technical.raw_payload as { evidence_packet: EvidencePacket }).evidence_packet
     const fundamentalEvidence = (fundamentals.raw_payload as { evidence_packet: EvidencePacket }).evidence_packet
-    const researchEvidence = packet(signal.symbol, analysis.asOf, 'ai_research', [...technicalEvidence.items, ...fundamentalEvidence.items], { source_engines: ['technical_regime', 'fundamentals_valuation'] })
+    const researchMetrics = new Set(['revenue', 'net_income', 'shares_outstanding', 'implied_value_base'])
+    const researchEvidence = packet(signal.symbol, analysis.asOf, 'ai_research', [
+      ...technicalEvidence.items,
+      ...fundamentalEvidence.items.filter((item) => researchMetrics.has(item.metric)),
+    ], { source_engines: ['technical_regime', 'fundamentals_valuation'], selection: 'decision-relevant-v1' })
     for (const evidence of [technicalEvidence, fundamentalEvidence, researchEvidence]) {
       const errors = validateEvidencePacket(evidence)
       if (errors.length) throw new Error(`${signal.symbol} evidence invalid: ${errors.join('; ')}`)
