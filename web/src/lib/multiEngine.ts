@@ -73,8 +73,7 @@ async function researchOutput(runId: number, signal: SignalRow, asOf: string, ev
 }
 
 export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: number) {
-  const rows: EngineOutput[] = []
-  for (const signal of analysis.signals) {
+  const groups = await Promise.all(analysis.signals.map(async (signal) => {
     const technical = technicalOutput(runId, signal, analysis.asOf)
     const fundamentals = await fundamentalsOutput(runId, signal, analysis.asOf)
     const technicalEvidence = (technical.raw_payload as { evidence_packet: EvidencePacket }).evidence_packet
@@ -84,7 +83,7 @@ export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: n
       const errors = validateEvidencePacket(evidence)
       if (errors.length) throw new Error(`${signal.symbol} evidence invalid: ${errors.join('; ')}`)
     }
-    rows.push(technical, fundamentals, await researchOutput(runId, signal, analysis.asOf, researchEvidence))
-  }
-  return rows
+    return [technical, fundamentals, await researchOutput(runId, signal, analysis.asOf, researchEvidence)]
+  }))
+  return groups.flat()
 }
