@@ -12,5 +12,6 @@ describe('material-change daily brief', () => {
     expect(brief.summary).toContain('1 material change')
     expect(brief.markdown).toContain('AMD: flip')
     expect(brief.markdown).not.toContain('MSFT')
+    expect(brief.summary).toContain('across 1 covered ticker')
   })
 })
