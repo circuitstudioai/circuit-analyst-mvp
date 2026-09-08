@@ -54,7 +54,7 @@ export async function enrichWithGemini(
   options: { generate?: Generate; model?: string } = {},
 ): Promise<{ signals: SignalRow[]; summary: GeminiSummary }> {
   const apiKey = process.env.GEMINI_API_KEY
-  const model = options.model || process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+  const model = options.model || process.env.GEMINI_MODEL || 'gemini-2.5-flash'
   if (!apiKey && !options.generate) {
     return { signals: signals.map((s) => ({ ...s, aiStatus: 'skipped' })), summary: { status: 'skipped', model: null, generated: 0, cached: 0, failed: 0 } }
   }
