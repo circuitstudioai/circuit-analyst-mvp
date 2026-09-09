@@ -48,6 +48,14 @@ async function runRefresh(req: NextRequest, input: unknown) {
     const brief = buildMaterialChangeBrief(savedRun.runId, consensus, engineOutputs, diffs, analysis.asOf)
     const briefWrite = await saveDailyBrief(brief)
     const researchUsage = engineOutputs.reduce((total, row) => total + Number((row.raw_payload as { usage?: { total_tokens?: number } } | null)?.usage?.total_tokens || 0), 0)
+    const aiResearch = engineOutputs
+      .filter((row) => row.engine_name === 'ai_research')
+      .map((row) => ({
+        ticker: row.ticker,
+        status: (row.raw_payload as { abstained?: boolean } | null)?.abstained ? 'abstained' : 'completed',
+        model: (row.raw_payload as { model?: string } | null)?.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+        error: row.risk_flags?.[0] || null,
+      }))
     const usageWrite = researchUsage ? await saveProviderUsage({ provider: 'gemini', route: '/api/jobs/refresh:ai_research', units: researchUsage }) : { skipped: true }
     const errors = [
       ...('error' in ingest && ingest.error ? [ingest.error] : []),
@@ -79,6 +87,7 @@ async function runRefresh(req: NextRequest, input: unknown) {
       },
       dailyBrief: briefWrite,
       providerUsage: usageWrite,
+      aiResearch,
       pipeline: analysis.pipeline,
     })
   } catch (e: unknown) {
