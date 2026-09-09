@@ -6,6 +6,21 @@ import { AnalyzeResponse, SignalRow } from './types'
 
 type ResearchResponse = { view: 'bullish' | 'neutral' | 'bearish'; confidence: number; thesis: string; cited_evidence_ids: string[] }
 
+const researchResponseSchema = {
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['view', 'confidence', 'thesis', 'cited_evidence_ids'],
+    properties: {
+      view: { type: 'string', enum: ['bullish', 'neutral', 'bearish'] },
+      confidence: { type: 'integer', minimum: 0, maximum: 100 },
+      thesis: { type: 'string', maxLength: 180 },
+      cited_evidence_ids: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string' } },
+    },
+  },
+}
+
 function asStrings(value: unknown) {
   if (Array.isArray(value)) return value.map(String).slice(0, 12)
   return value ? [String(value)] : []
@@ -69,7 +84,7 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
     const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash'
     const ai = new GoogleGenAI({ apiKey: key })
     const prompt = `Analyze only these evidence packets. Return a strict JSON array in the same order, one compact object per packet, with exactly four keys: view, confidence (0-100), thesis, cited_evidence_ids. Every factual statement must cite an ID from its packet. Each thesis must be at most 20 words. Cite at most three IDs. If evidence is insufficient, use neutral and low confidence.\n${JSON.stringify(inputs.map((input) => input.evidence))}`
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 1200, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
+    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', responseJsonSchema: researchResponseSchema, maxOutputTokens: 1200, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
     const parsed = JSON.parse(response.text || '[]') as ResearchResponse[]
     if (!Array.isArray(parsed) || parsed.length !== inputs.length) throw new Error('AI response count mismatch')
     const usage = response.usageMetadata
