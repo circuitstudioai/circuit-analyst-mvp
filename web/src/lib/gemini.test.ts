@@ -25,11 +25,19 @@ describe('Gemini enrichment', () => {
 
   it('reports complete only when every symbol is enriched', async () => {
     const result = await enrichWithGemini([signal('COMPLETE1'), signal('COMPLETE2')], 0.2, {
-      model: 'test-model', generate: async (prompt) => `Unique note for ${prompt.includes('COMPLETE1') ? 'one' : 'two'}`,
+      model: 'test-model', generate: async (prompt) => `- **What it means:** Evidence is ${prompt.includes('COMPLETE1') ? 'favorable' : 'mixed'} today.\n- **What to watch:** Watch the stated risk level next.`,
     })
     expect(result.summary).toMatchObject({ status: 'complete', generated: 2, failed: 0 })
     expect(result.signals.every((row) => row.aiStatus === 'complete')).toBe(true)
     expect(result.signals[0].aiExplanation).not.toBe(result.signals[1].aiExplanation)
+  })
+
+  it('rejects advice language that violates the safe response contract', async () => {
+    const result = await enrichWithGemini([signal('UNSAFE')], 0.2, {
+      model: 'test-model', generate: async () => '- **What it means:** Buy this stock now.\n- **What to watch:** Nothing can go wrong.',
+    })
+    expect(result.summary.status).toBe('fallback')
+    expect(result.signals[0].aiErrorCode).toBe('validation')
   })
 
   it('returns deterministic fallback status and a safe error code on provider failure', async () => {

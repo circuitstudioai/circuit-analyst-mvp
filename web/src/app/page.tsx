@@ -27,6 +27,16 @@ type FeedbackDraft = {
   state: 'editing' | 'sending' | 'saved' | 'error'
 }
 
+type FollowUp = 'summary' | 'simple' | 'risks' | 'valuation' | 'evidence' | 'change'
+
+const followUps: Array<{ id: FollowUp; label: string }> = [
+  { id: 'simple', label: 'Explain this simply' },
+  { id: 'risks', label: 'What could go wrong?' },
+  { id: 'valuation', label: 'Show the valuation view' },
+  { id: 'evidence', label: 'Show the evidence' },
+  { id: 'change', label: 'What changed?' },
+]
+
 function cardClass(decision: SignalRow['decision']) {
   if (decision === 'BUY') return `${styles.report} ${styles.reportBuy}`
   if (decision === 'SELL') return `${styles.report} ${styles.reportSell}`
@@ -38,6 +48,13 @@ function verdict(signal: SignalRow) {
   if (signal.decision === 'BUY') return 'Bullish'
   if (signal.decision === 'SELL') return 'Bearish'
   return 'Neutral'
+}
+
+function evidenceView(signal: SignalRow) {
+  if (signal.abstained) return 'Not enough reliable information'
+  if (signal.decision === 'BUY') return 'Favorable'
+  if (signal.decision === 'SELL') return 'Unfavorable'
+  return 'Mixed'
 }
 
 function pct(value: number) {
@@ -67,6 +84,8 @@ export default function HomePage() {
   const [symbolQuery, setSymbolQuery] = useState('')
   const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([])
   const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
+  const [activeSymbol, setActiveSymbol] = useState<string | null>(null)
+  const [followUp, setFollowUp] = useState<FollowUp>('summary')
   const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
@@ -128,6 +147,7 @@ export default function HomePage() {
   }, [recentRuns, result])
 
   const visibleRuns = accessToken ? recentRuns : []
+  const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
 
   async function fetchRecentRuns() {
     if (!accessToken) {
@@ -201,6 +221,8 @@ export default function HomePage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
       setResult(data)
+      setActiveSymbol(data.signals?.[0]?.symbol || null)
+      setFollowUp('summary')
       const runId = Number(data?.saved?.runId)
       if (runId) {
         const deskResponse = await fetch(`/api/desk?runId=${runId}`, {
@@ -294,10 +316,10 @@ export default function HomePage() {
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.kicker}>Circuit Studio AI</p>
-          <h1>Circuit Market Desk</h1>
+          <h1>Market research, in plain English.</h1>
           <p>
-            A focused beta market desk that turns a watchlist into decisions,
-            thesis, risk, invalidation, next actions, and research-backed evidence.
+            Ask about a company. Market Desk explains what the evidence shows,
+            what could go wrong, and what to watch next.
           </p>
         </div>
 
@@ -311,7 +333,7 @@ export default function HomePage() {
             <span>Evidence-led beta</span>
             <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
           </div>
-          <label className={styles.label}>Ticker or watchlist</label>
+          <label className={styles.label}>What company are you curious about?</label>
           <div className={styles.symbolSearch}>
             <input
               value={symbolQuery}
@@ -323,7 +345,7 @@ export default function HomePage() {
                   setSymbolSearchState('idle')
                 }
               }}
-              placeholder="Search symbol or company — e.g. TSLA or Shopify"
+              placeholder="Type a company name or ticker — e.g. Nvidia"
               aria-label="Search live market symbols"
               autoComplete="off"
             />
@@ -347,7 +369,7 @@ export default function HomePage() {
             className={styles.textarea}
             aria-label="Ticker watchlist"
           />
-          <p className={styles.inputHint}>Search by company name or enter any supported Yahoo ticker. Analysis runs live when you press Run analysis; scheduled refresh only powers the daily desk.</p>
+          <p className={styles.inputHint}>Add one company for the clearest answer, or add a few to compare.</p>
           <div className={styles.sampleRow}>
             {samples.map((symbols) => (
               <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
@@ -356,11 +378,68 @@ export default function HomePage() {
             ))}
           </div>
           <button onClick={() => runAnalysis()} disabled={loading || !accessToken} className={styles.button}>
-            {loading ? 'Analyzing...' : accessToken ? 'Run analysis' : 'Sign in to analyze'}
+            {loading ? 'Reading the evidence…' : accessToken ? 'Help me understand' : 'Sign in to ask'}
           </button>
           {error && <p className={styles.error}>{error}</p>}
         </div>
       </section>
+
+      <section className={styles.conversation} aria-live="polite">
+        {!activeSignal ? (
+          <div className={styles.welcomeMessage}>
+            <span className={styles.assistantMark}>C</span>
+            <div>
+              <strong>What would you like to understand?</strong>
+              <p>Start with one company. I’ll give you a short answer first, then you can explore the risks, evidence, or valuation.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {result && result.signals.length > 1 && (
+              <div className={styles.companyTabs} aria-label="Analyzed companies">
+                {result.signals.map((signal) => (
+                  <button key={signal.symbol} className={signal.symbol === activeSignal.symbol ? styles.activeCompany : undefined} onClick={() => { setActiveSymbol(signal.symbol); setFollowUp('summary') }}>
+                    {signal.symbol}
+                  </button>
+                ))}
+              </div>
+            )}
+            <article className={styles.answerCard}>
+              <div className={styles.answerLead}>
+                <span className={styles.assistantMark}>C</span>
+                <div>
+                  <p className={styles.kicker}>Plain-English evidence view</p>
+                  <h2>{activeSignal.symbol} looks {evidenceView(activeSignal).toLowerCase()} right now.</h2>
+                </div>
+                <span className={styles.viewBadge}>{evidenceView(activeSignal)}</span>
+              </div>
+
+              {followUp === 'summary' && <>
+                <p className={styles.answerText}>{activeSignal.aiExplanation || activeSignal.thesis}</p>
+                <div className={styles.answerGrid}>
+                  <div><span>Why</span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
+                  <div><span>What could change this</span><p>{activeSignal.invalidation}</p></div>
+                  <div><span>What to do next</span><p>{activeSignal.nextAction}</p></div>
+                </div>
+              </>}
+              {followUp === 'simple' && <div className={styles.followUpAnswer}><strong>In simple terms</strong><p>{activeSignal.thesis}</p><p>This is a research signal, not a prediction or instruction to trade.</p></div>}
+              {followUp === 'risks' && <div className={styles.followUpAnswer}><strong>The main things that could go wrong</strong><ul>{formatList([...activeSignal.riskFlags, ...activeSignal.bearCase]).slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ul></div>}
+              {followUp === 'valuation' && <div className={styles.followUpAnswer}><strong>Valuation view</strong><p>The detailed valuation engine uses visible bear, base, and bull assumptions when SEC fundamentals are available.</p><p>Open Advanced evidence below to inspect the assumptions and calculations. If the data is incomplete, Market Desk abstains.</p></div>}
+              {followUp === 'evidence' && <div className={styles.followUpAnswer}><strong>Evidence used</strong><ul>{activeSignal.evidence.map((item) => <li key={`${item.label}-${item.detail}`}><b>{item.label}:</b> {item.detail}</li>)}</ul><small>Market data as of {activeSignal.dataAsOf || 'unavailable'}.</small></div>}
+              {followUp === 'change' && <div className={styles.followUpAnswer}><strong>Change since the prior run</strong><p>{previousRun ? `The prior saved run was ${new Date(previousRun.as_of).toLocaleDateString()}. Open Advanced evidence for the detailed comparison.` : 'A reliable comparison will appear after this company has at least two saved runs.'}</p></div>}
+
+              <div className={styles.followUpRow}>
+                {followUps.map((item) => <button key={item.id} aria-pressed={followUp === item.id} onClick={() => setFollowUp(item.id)}>{item.label}</button>)}
+                {followUp !== 'summary' && <button onClick={() => setFollowUp('summary')}>Back to summary</button>}
+              </div>
+              <p className={styles.answerCaveat}>Educational research support only. The evidence can be incomplete or wrong; verify it before making financial decisions.</p>
+            </article>
+          </>
+        )}
+      </section>
+
+      <details className={styles.advancedDesk}>
+        <summary>Advanced evidence and system details</summary>
 
       <section className={styles.band}>
         <div className={styles.pipeline}>
@@ -580,6 +659,7 @@ export default function HomePage() {
           </div>
         )}
       </section>
+      </details>
 
       {accessToken && (
         <button type="button" className={styles.feedbackLauncher} onClick={() => setGeneralFeedbackOpen(true)}>

@@ -4,6 +4,8 @@ import { AnalyzeResponse, SignalRow } from './types'
 const cache = new Map<string, { expires: number; text: string }>()
 const TTL_MS = 1000 * 60 * 30
 const PROMPT_VERSION = 'plain-language-v1'
+const DEFAULT_MAX_PROVIDER_CALLS = 14
+const RETRYABLE = new Set(['quota', 'timeout', 'provider'])
 
 export type GeminiSummary = NonNullable<AnalyzeResponse['aiSummary']>
 type Generate = (prompt: string, model: string) => Promise<string>
@@ -48,6 +50,16 @@ function safeErrorCode(error: unknown) {
   return 'provider'
 }
 
+function validateExplanation(text: string) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (lines.length !== 2 || !lines[0].startsWith('- **What it means:**') || !lines[1].startsWith('- **What to watch:**')) return false
+  return !/\b(buy|sell|trade|guarantee(?:d)?|sure thing)\b/i.test(text)
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function enrichWithGemini(
   signals: SignalRow[],
   regimeScore: number,
@@ -65,6 +77,8 @@ export async function enrichWithGemini(
   })
 
   const out: SignalRow[] = []
+  const maxProviderCalls = Math.max(1, Number(process.env.GEMINI_MAX_CALLS_PER_REQUEST || DEFAULT_MAX_PROVIDER_CALLS))
+  let providerCalls = 0
   let generated = 0
   let cachedCount = 0
   let failed = 0
@@ -83,7 +97,22 @@ export async function enrichWithGemini(
         continue
       }
       const prompt = buildPlainLanguagePrompt(s, regimeScore)
-      const txt = (await generate(prompt, model)).trim()
+      if (providerCalls >= maxProviderCalls) throw Object.assign(new Error('request AI call budget exhausted'), { code: 'budget' })
+      let txt = ''
+      let lastError: unknown
+      for (let attempt = 0; attempt < 2 && providerCalls < maxProviderCalls; attempt += 1) {
+        try {
+          providerCalls += 1
+          txt = (await generate(prompt, model)).trim()
+          break
+        } catch (error) {
+          lastError = error
+          if (!RETRYABLE.has(safeErrorCode(error)) || attempt === 1 || providerCalls >= maxProviderCalls) throw error
+          await wait(250 * (attempt + 1))
+        }
+      }
+      if (!txt && lastError) throw lastError
+      if (txt && !validateExplanation(txt)) throw Object.assign(new Error('AI response failed grounded format validation'), { code: 'validation' })
       if (txt) cache.set(cacheKey, { expires: Date.now() + TTL_MS, text: txt })
       out.push({
         ...s,
@@ -95,7 +124,8 @@ export async function enrichWithGemini(
       if (txt) generated += 1
       else failed += 1
     } catch (error) {
-      const errorCode = safeErrorCode(error)
+      const explicitCode = String((error as { code?: string })?.code || '')
+      const errorCode = ['budget', 'validation'].includes(explicitCode) ? explicitCode : safeErrorCode(error)
       const providerError = error as { status?: number; code?: number | string; message?: string }
       failed += 1
       console.warn('[gemini]', JSON.stringify({
