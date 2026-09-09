@@ -21,6 +21,7 @@ export type SignalRow = {
   abstained: boolean
   source: string
   evidence: EvidenceBadge[]
+  priceHistory?: Array<{ date: string; close: number }>
   aiExplanation?: string
   aiStatus?: 'complete' | 'cached' | 'fallback' | 'skipped'
   aiErrorCode?: string

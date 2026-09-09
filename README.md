@@ -39,6 +39,12 @@ a plain-English evidence view, and explore guided questions about risk,
 valuation, sources, and changes. Dense engine and system details remain
 available under an advanced disclosure.
 
+The result journey uses a TradingAgents-inspired interaction pattern without
+exposing agent transcripts: an honest four-stage analyst-room progress view,
+a dominant research action, a six-month price journey, a positive-versus-risk
+challenge, and an evidence-balance visual. Price history is live provider data;
+visual counts are explicitly descriptive rather than probabilities.
+
 Each watchlist symbol gets:
 - BUY / HOLD / SELL / ABSTAIN-style decision support
 - confidence and score

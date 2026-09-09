@@ -151,6 +151,10 @@ export async function analyzeWatchlist(watchlist: string[]): Promise<AnalyzeResp
       abstained: s.abstained,
       source: 'Yahoo daily close, 20/100 trend, 20D momentum, realized volatility, SPY/QQQ regime',
       evidence,
+      priceHistory: (prices[symbol]?.closes || []).slice(-180).map((close, index, rows) => {
+        const dates = prices[symbol]?.dates || []
+        return { date: dates[dates.length - rows.length + index] || '', close: Number(close.toFixed(2)) }
+      }),
     }
   })
 
