@@ -34,6 +34,11 @@ on demand; scheduled refresh is only responsible for the shared daily brief.
 - `GET /api/jobs/refresh` → authenticated Vercel Cron refresh (weekdays at 12:00 UTC)
 
 ## What the app returns
+The primary beta experience is conversational: users choose a company, receive
+a plain-English evidence view, and explore guided questions about risk,
+valuation, sources, and changes. Dense engine and system details remain
+available under an advanced disclosure.
+
 Each watchlist symbol gets:
 - BUY / HOLD / SELL / ABSTAIN-style decision support
 - confidence and score
@@ -67,6 +72,7 @@ Desk without touching the CLI harness.
 3. Add env vars:
    - `GEMINI_API_KEY`
    - `GEMINI_MODEL` (optional)
+   - `GEMINI_MAX_CALLS_PER_REQUEST` (optional; defaults to 14, including retries)
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `CRON_SECRET` (at least 32 random characters)
@@ -83,6 +89,10 @@ Most AI stock tools generate opinions. **Circuit Market Desk generates accountab
 
 The production path never creates directional decisions from synthetic prices.
 If live market history is unavailable or too short, the engine abstains.
+AI explanations must match the two-part plain-language contract and are rejected
+if they contain direct trading instructions. Retry attempts share a hard
+per-request provider-call budget; deterministic analysis remains available when
+the AI path fails or exhausts its budget.
 
 ## Disclaimer
 Educational / decision-support only. Not investment advice.
