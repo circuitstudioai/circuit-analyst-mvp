@@ -65,6 +65,13 @@ function formatList(items: string[]) {
   return items.length ? items : ['No major item flagged.']
 }
 
+function researchAction(signal: SignalRow) {
+  if (signal.abstained) return 'Wait for reliable evidence'
+  if (signal.decision === 'BUY') return 'Keep on your watchlist'
+  if (signal.decision === 'SELL') return 'Approach with caution'
+  return 'Investigate before deciding'
+}
+
 export default function HomePage() {
   const [watchlistText, setWatchlistText] = useState(() => {
     if (typeof window === 'undefined') return 'NVDA, AMD, SOFI, HIMS'
@@ -385,6 +392,7 @@ export default function HomePage() {
       </section>
 
       <section className={styles.conversation} aria-live="polite">
+        <ResearchJourney loading={loading} result={result} />
         {!activeSignal ? (
           <div className={styles.welcomeMessage}>
             <span className={styles.assistantMark}>C</span>
@@ -408,10 +416,15 @@ export default function HomePage() {
               <div className={styles.answerLead}>
                 <span className={styles.assistantMark}>C</span>
                 <div>
-                  <p className={styles.kicker}>Plain-English evidence view</p>
-                  <h2>{activeSignal.symbol} looks {evidenceView(activeSignal).toLowerCase()} right now.</h2>
+                  <p className={styles.kicker}>Final research decision</p>
+                  <h2>{researchAction(activeSignal)}</h2>
                 </div>
                 <span className={styles.viewBadge}>{evidenceView(activeSignal)}</span>
+              </div>
+
+              <div className={styles.decisionSentence}>
+                <strong>{activeSignal.symbol} looks {evidenceView(activeSignal).toLowerCase()}.</strong>
+                <span>Confidence is {activeSignal.confidence >= .75 ? 'high' : activeSignal.confidence >= .5 ? 'medium' : 'low'}.</span>
               </div>
 
               {followUp === 'summary' && <>
@@ -421,6 +434,12 @@ export default function HomePage() {
                   <div><span>What could change this</span><p>{activeSignal.invalidation}</p></div>
                   <div><span>What to do next</span><p>{activeSignal.nextAction}</p></div>
                 </div>
+                <PriceJourney signal={activeSignal} />
+                <div className={styles.debateGrid}>
+                  <section><span className={styles.debateLabel}>Positive case</span><ul>{formatList(activeSignal.bullCase).slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul></section>
+                  <section><span className={styles.debateLabel}>Challenge</span><ul>{formatList([...activeSignal.riskFlags, ...activeSignal.bearCase]).slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul></section>
+                </div>
+                <EvidenceBalance signal={activeSignal} />
               </>}
               {followUp === 'simple' && <div className={styles.followUpAnswer}><strong>In simple terms</strong><p>{activeSignal.thesis}</p><p>This is a research signal, not a prediction or instruction to trade.</p></div>}
               {followUp === 'risks' && <div className={styles.followUpAnswer}><strong>The main things that could go wrong</strong><ul>{formatList([...activeSignal.riskFlags, ...activeSignal.bearCase]).slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ul></div>}
@@ -699,6 +718,62 @@ function PipelineItem({ step }: { step: PipelineStep }) {
       <p>{step.detail}</p>
     </div>
   )
+}
+
+function ResearchJourney({ loading, result }: { loading: boolean; result: AnalyzeResponse | null }) {
+  const [active, setActive] = useState(0)
+  const stages = [
+    ['Market reader', 'Gathering current price history'],
+    ['Evidence analyst', 'Checking research and company context'],
+    ['Risk reviewer', 'Testing what could weaken the case'],
+    ['Decision editor', 'Reconciling the evidence in plain English'],
+  ]
+  useEffect(() => {
+    if (!loading) return
+    const reset = window.setTimeout(() => setActive(1), 0)
+    const timer = window.setInterval(() => setActive((value) => Math.min(value + 1, stages.length - 1)), 1100)
+    return () => { window.clearTimeout(reset); window.clearInterval(timer) }
+  }, [loading, result, stages.length])
+  if (!loading && !result) return null
+  const displayedActive = !loading && result ? stages.length : active
+  const actualDetail = (name: string, fallback: string) => {
+    const label = name === 'Market reader' ? 'Public price fetch' : name === 'Evidence analyst' ? 'Research evidence' : name === 'Decision editor' ? 'AI summary' : 'Rule scoring'
+    return result?.pipeline.find((step) => step.label === label)?.detail || fallback
+  }
+  return (
+    <section className={styles.journey} aria-label="Research progress">
+      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : 'Research review complete'}</h2></div><span>{Math.max(displayedActive, 1)}/{stages.length}</span></div>
+      <ol>
+        {stages.map(([name, detail], index) => {
+          const complete = !loading || index < displayedActive
+          const working = loading && index === displayedActive
+          return <li key={name} className={complete ? styles.stageComplete : working ? styles.stageWorking : styles.stageWaiting}><i>{complete ? '✓' : working ? '•' : index + 1}</i><div><strong>{name}</strong><span>{complete ? actualDetail(name, detail) : detail}</span></div><small>{complete ? 'Complete' : working ? 'Working' : 'Waiting'}</small></li>
+        })}
+      </ol>
+    </section>
+  )
+}
+
+function PriceJourney({ signal }: { signal: SignalRow }) {
+  const rows = signal.priceHistory || []
+  if (rows.length < 2) return <div className={styles.chartEmpty}>Price journey unavailable because reliable history was not returned.</div>
+  const width = 720
+  const height = 210
+  const values = rows.map((row) => row.close)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const spread = max - min || 1
+  const points = rows.map((row, index) => `${(index / (rows.length - 1)) * width},${height - ((row.close - min) / spread) * (height - 24) - 12}`).join(' ')
+  const change = (values.at(-1)! / values[0] - 1) * 100
+  return <figure className={styles.priceJourney}><figcaption><div><span>Price journey</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg><p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p></figure>
+}
+
+function EvidenceBalance({ signal }: { signal: SignalRow }) {
+  const favorable = signal.bullCase.length
+  const caution = signal.bearCase.length + signal.riskFlags.length
+  const uncertain = signal.dataQuality === 'ok' ? 0 : 1
+  const total = Math.max(1, favorable + caution + uncertain)
+  return <section className={styles.evidenceBalance}><div><span>Evidence balance</span><strong>{favorable} favorable · {caution} caution · {uncertain} uncertain</strong></div><div className={styles.balanceBar} aria-label="Evidence balance"><i className={styles.favorableBar} style={{ width: `${favorable / total * 100}%` }}/><i className={styles.cautionBar} style={{ width: `${caution / total * 100}%` }}/><i className={styles.uncertainBar} style={{ width: `${uncertain / total * 100}%` }}/></div><p>Counts summarize the displayed evidence items; they are not probabilities.</p></section>
 }
 
 function ListBlock({ title, items }: { title: string; items: string[] }) {
