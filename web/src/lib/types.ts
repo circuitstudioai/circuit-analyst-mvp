@@ -25,12 +25,40 @@ export type SignalRow = {
   aiExplanation?: string
   aiStatus?: 'complete' | 'cached' | 'fallback' | 'skipped'
   aiErrorCode?: string
+  deepAnalysis?: DeepAnalysisReport
+}
+
+export type AnalysisIntent = 'overview' | 'risk' | 'valuation' | 'earnings' | 'change' | 'comparison'
+
+export type DeepAnalysisSource = {
+  title: string
+  url: string
+  publishedAt?: string | null
+}
+
+export type DeepAnalysisReport = {
+  symbol: string
+  question: string
+  intent: AnalysisIntent
+  status: 'complete' | 'fallback'
+  view: 'favorable' | 'mixed' | 'unfavorable' | 'insufficient_evidence'
+  confidence: 'low' | 'medium' | 'high'
+  directAnswer: string
+  distinctiveNow: string
+  strongestEvidence: string[]
+  strongestCounterargument: string[]
+  changeConditions: string[]
+  sources: DeepAnalysisSource[]
+  model?: string
+  errorCode?: string
 }
 
 export type AnalyzeResponse = {
   asOf: string
   regimeScore: number
   watchlist: string[]
+  question?: string
+  intent?: AnalysisIntent
   signals: SignalRow[]
   pipeline: PipelineStep[]
   shareId: string
@@ -94,6 +122,6 @@ export type EvidenceBadge = {
 
 export type PipelineStep = {
   label: string
-  status: 'complete' | 'skipped' | 'fallback'
+  status: 'complete' | 'partial' | 'skipped' | 'fallback'
   detail: string
 }

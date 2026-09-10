@@ -102,7 +102,7 @@ async function researchOutputs(runId: number, inputs: Array<{ signal: SignalRow;
   }
 }
 
-export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: number) {
+export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: number, options: { includeAiResearch?: boolean } = {}) {
   const prepared = await Promise.all(analysis.signals.map(async (signal) => {
     const technical = technicalOutput(runId, signal, analysis.asOf)
     const fundamentals = await fundamentalsOutput(runId, signal, analysis.asOf)
@@ -119,6 +119,9 @@ export async function runMultiEngineAnalysis(analysis: AnalyzeResponse, runId: n
     }
     return { signal, technical, fundamentals, researchEvidence }
   }))
+  if (options.includeAiResearch === false) {
+    return prepared.flatMap(({ technical, fundamentals }) => [technical, fundamentals])
+  }
   const batches: typeof prepared[] = []
   for (let index = 0; index < prepared.length; index += 4) batches.push(prepared.slice(index, index + 4))
   const researched: EngineOutput[][] = []

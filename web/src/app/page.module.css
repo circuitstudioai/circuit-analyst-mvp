@@ -314,6 +314,19 @@
   font: 15px/1.55 var(--font-geist-mono), monospace;
 }
 
+.questionInput { width: 100%; resize: vertical; border: 1px solid rgba(16,26,29,.18); border-radius: 16px; background: #fffdf7; color: #172326; padding: 14px 16px; font: inherit; line-height: 1.5; }
+.questionInput:focus { outline: 3px solid rgba(189,111,55,.18); border-color: #a85d2c; }
+.deepBrief { display: grid; gap: 24px; }
+.askedQuestion { margin: 0; color: #687579; font-family: Georgia, serif; font-size: 18px; font-style: italic; }
+.distinctiveBlock, .changeBlock, .sourceShelf { padding: 20px; border-left: 3px solid #b76d38; background: #fbf7ed; }
+.distinctiveBlock > span, .changeBlock > span, .sourceShelf > span { display: block; margin-bottom: 9px; color: #687579; font-size: 11px; font-weight: 850; letter-spacing: .11em; text-transform: uppercase; }
+.distinctiveBlock p { margin: 0; line-height: 1.65; }
+.changeBlock ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.sourceShelf div { display: flex; flex-wrap: wrap; gap: 8px; }
+.sourceShelf a { border: 1px solid rgba(16,26,29,.14); border-radius: 999px; background: white; color: #245d4b; padding: 7px 11px; font-size: 12px; font-weight: 750; text-decoration: none; }
+.sourceShelf a:hover { border-color: #245d4b; }
+.fallbackNotice { display: flex; gap: 10px; align-items: baseline; padding: 12px 14px; border-radius: 12px; background: #fff2dc; color: #6c4823; font-size: 13px; }
+
 .symbolSearch {
   position: relative;
   margin-bottom: 10px;
