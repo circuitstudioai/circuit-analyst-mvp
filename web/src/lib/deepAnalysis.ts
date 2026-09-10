@@ -73,7 +73,10 @@ function fallback(signal: SignalRow, question: string, intent: AnalysisIntent, c
 export async function generateDeepAnalysis(signal: SignalRow, question: string, intent: AnalysisIntent, engines: EngineOutput[]): Promise<DeepAnalysisReport> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return fallback(signal, question, intent, 'not_configured')
-  const model = process.env.GEMINI_DEEP_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash'
+  // Search grounding is not available on every text-only model. Keep the deep
+  // research model independently configurable and default to the stable
+  // search-capable Flash model.
+  const model = process.env.GEMINI_DEEP_MODEL || 'gemini-2.5-flash'
   const ai = new GoogleGenAI({ apiKey })
   try {
     const researchPrompt = `Act as a research planner for ${signal.symbol}. The user asks: ${JSON.stringify(question)}. Intent: ${intent}.
@@ -115,7 +118,12 @@ Debate: ${JSON.stringify(debate)}`
       changeConditions: strings(edited.change_conditions), sources, model,
     }
   } catch (error) {
-    console.warn('[deep-analysis]', JSON.stringify({ symbol: signal.symbol, message: error instanceof Error ? error.message.slice(0, 220) : 'unknown' }))
-    return fallback(signal, question, intent, 'provider_or_validation')
+    const message = error instanceof Error ? error.message : 'unknown'
+    console.warn('[deep-analysis]', JSON.stringify({ symbol: signal.symbol, model, message: message.slice(0, 220) }))
+    const code = /quota|429|resource_exhausted/i.test(message) ? 'quota'
+      : /json|unexpected token|incomplete|citation|sourced facts/i.test(message) ? 'validation'
+      : /model|not found|unsupported/i.test(message) ? 'model'
+      : 'provider'
+    return fallback(signal, question, intent, code)
   }
 }
