@@ -53,10 +53,10 @@ function scoreSeries(symbol: string, series: PriceSeries, regimeBias: number) {
   const confidence = Math.min(0.95, 0.4 + Math.abs(score))
 
   const reasons = [
-    `MA20 ${ma20 > ma100 ? 'above' : 'below'} MA100`,
-    `20D momentum ${(mom20 * 100).toFixed(1)}%`,
-    `Volatility penalty ${(riskPenalty * 100).toFixed(1)} bps`,
-    `Regime bias ${(regimeBias * 100).toFixed(0)} bps`,
+    `The recent price trend is ${ma20 > ma100 ? 'stronger' : 'weaker'} than the longer-term trend`,
+    `The price has ${mom20 >= 0 ? 'risen' : 'fallen'} ${Math.abs(mom20 * 100).toFixed(1)}% over roughly the past month`,
+    `Recent price swings ${riskPenalty > 0.08 ? 'meaningfully increase' : 'slightly increase'} uncertainty`,
+    `Broader market conditions are ${regimeBias >= 0 ? 'helping' : 'hurting'} this setup`,
   ]
   const narrative = buildNarrative({ symbol, decision, last, ma20, ma100, momentum20: mom20, volatility20: vol20, score, regimeBias })
 
