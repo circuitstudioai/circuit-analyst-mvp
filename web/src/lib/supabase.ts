@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { AnalyzeResponse } from './types'
+import { AnalyzeResponse, AnalysisIntent, DeepAnalysisReport } from './types'
 import { ConsensusResult, EngineOutput } from './consensus'
 
 export function serviceClient() {
@@ -20,6 +20,8 @@ export async function saveRun(payload: AnalyzeResponse) {
       regime_score: payload.regimeScore,
       watchlist: payload.watchlist,
       status: 'running',
+      question: payload.question || null,
+      intent: payload.intent || null,
     })
     .select('id')
     .single()
@@ -51,6 +53,14 @@ export async function saveRun(payload: AnalyzeResponse) {
   }
 
   return { ok: true, runId: Number(run.id) }
+}
+
+export async function saveDeepReports(runId: number, question: string, intent: AnalysisIntent, reports: DeepAnalysisReport[]) {
+  const sb = serviceClient()
+  if (!sb) return { skipped: true }
+  const rows = reports.map((report) => ({ run_id: runId, ticker: report.symbol, question, intent, status: report.status, view: report.view, confidence: report.confidence, report }))
+  const { error } = await sb.from('analysis_reports').upsert(rows, { onConflict: 'run_id,ticker' })
+  return error ? { error: error.message } : { ok: true, inserted: rows.length }
 }
 
 export async function completeRun(

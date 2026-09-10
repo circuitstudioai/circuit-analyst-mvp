@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeWatchlist } from '@/lib/engine'
-import { applyGeminiEnrichment, enrichWithGemini } from '@/lib/gemini'
 import { computeConsensus } from '@/lib/consensus'
-import { ruleEngineOutputsFromAnalysis } from '@/lib/engineOutputs'
-import { completeRun, ingestEngineOutputs, saveConsensus, saveRun } from '@/lib/supabase'
+import { classifyIntent, generateDeepAnalysis } from '@/lib/deepAnalysis'
+import { runMultiEngineAnalysis } from '@/lib/multiEngine'
+import { completeRun, ingestEngineOutputs, saveConsensus, saveDeepReports, saveProviderUsage, saveRun } from '@/lib/supabase'
 import { requireBetaUser } from '@/lib/betaAuth'
 import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
-const MAX_SYMBOLS = 12
+const MAX_SYMBOLS = 2
 const CACHE_TTL_MS = 1000 * 60 * 5
 const RATE_WINDOW_MS = 1000 * 60 * 60
 const RATE_LIMIT = 24
@@ -45,6 +45,11 @@ function normalizeWatchlist(input: unknown) {
     .slice(0, MAX_SYMBOLS)
 }
 
+function normalizeQuestion(input: unknown, watchlist: string[]) {
+  const question = String(input || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+  return question || (watchlist.length > 1 ? `Compare ${watchlist.join(' and ')}. What matters most?` : `How does the evidence look for ${watchlist[0]} now?`)
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now()
   let requestId: string | null | undefined
@@ -65,6 +70,8 @@ export async function POST(req: NextRequest) {
     if (!watchlist.length) {
       return NextResponse.json({ error: 'Enter at least one valid ticker.' }, { status: 400 })
     }
+    const question = normalizeQuestion(body?.question, watchlist)
+    const intent = classifyIntent(question, watchlist.length)
 
     const quota = await claimAnalysisQuota(auth.user.id, watchlist.length)
     if (!quota.allowed) {
@@ -75,7 +82,7 @@ export async function POST(req: NextRequest) {
     }
     requestId = await createAnalysisRequest(auth.user.id, watchlist)
 
-    const cacheKey = watchlist.join(',')
+    const cacheKey = `${watchlist.join(',')}|${intent}|${question.toLowerCase()}`
     const cached = responseCache.get(cacheKey)
     if (cached && cached.expires > Date.now()) {
       const cachedRunId = Number((cached.payload as { saved?: { runId?: number } }).saved?.runId) || undefined
@@ -88,26 +95,43 @@ export async function POST(req: NextRequest) {
     }
 
     const base = await analyzeWatchlist(watchlist)
-    const enrichment = await enrichWithGemini(base.signals, base.regimeScore)
-    const draft = applyGeminiEnrichment(base, enrichment)
+    const draft = { ...base, question, intent }
 
     const saved = await saveRun(draft)
     let pipelineResult: Record<string, unknown> = { saved }
 
     if (saved.ok && saved.runId) {
-      const engineOutputs = ruleEngineOutputsFromAnalysis(draft, saved.runId)
+      // Foreground deep analysis owns the AI research pass. The multi-engine layer
+      // supplies independent technical and fundamentals/valuation evidence.
+      const engineOutputs = await runMultiEngineAnalysis(draft, saved.runId, { includeAiResearch: false })
       const ingested = await ingestEngineOutputs(engineOutputs)
-      const consensus = engineOutputs
-        .map((row) => computeConsensus([row]))
+      const byTicker = new Map<string, typeof engineOutputs>()
+      for (const row of engineOutputs) byTicker.set(row.ticker, [...(byTicker.get(row.ticker) || []), row])
+      const consensus = [...byTicker.values()]
+        .map((rows) => computeConsensus(rows))
         .filter((row) => row !== null)
       const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
+      const reports = await Promise.all(draft.signals.map((signal) => generateDeepAnalysis(signal, question, intent, engineOutputs.filter((row) => row.ticker === signal.symbol))))
+      draft.signals = draft.signals.map((signal) => ({ ...signal, deepAnalysis: reports.find((report) => report.symbol === signal.symbol) }))
+      const reportWrite = await saveDeepReports(saved.runId, question, intent, reports)
+      const completedReports = reports.filter((report) => report.status === 'complete').length
+      draft.pipeline = draft.pipeline.map((step) => step.label === 'AI summary' ? {
+        ...step,
+        status: completedReports === reports.length ? 'complete' : completedReports ? 'partial' : 'fallback',
+        detail: completedReports === reports.length
+          ? `Question-aware research, challenge, and decision editing completed for ${completedReports} ${completedReports === 1 ? 'company' : 'companies'}`
+          : `Deep research completed for ${completedReports}/${reports.length}; remaining reports use the explicit technical fallback`,
+      } : step)
+      const usageWrite = await saveProviderUsage({ provider: 'gemini', route: '/api/analyze:deep', units: completedReports * 3 })
       const writeErrors = [
         ...('error' in ingested && ingested.error ? [ingested.error] : []),
         ...consensusWrites.flatMap((row) => row.error ? [row.error] : []),
+        ...('error' in reportWrite && reportWrite.error ? [reportWrite.error] : []),
+        ...('error' in usageWrite && usageWrite.error ? [usageWrite.error] : []),
       ]
       const finalStatus = writeErrors.length ? 'partial' : 'completed'
       const completion = await completeRun(saved.runId, finalStatus, writeErrors.join('; ') || undefined)
-      pipelineResult = { saved, ingested, consensus, completion }
+      pipelineResult = { saved, ingested, consensus, reports: { completed: completedReports, fallback: reports.length - completedReports }, completion }
     }
     const persistenceStep = {
       label: 'Persistence',

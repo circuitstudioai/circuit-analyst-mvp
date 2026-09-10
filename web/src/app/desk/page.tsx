@@ -7,10 +7,10 @@ import { BetaAccess } from '../BetaAccess'
 
 const samples = [
   ['NVDA'],
-  ['AMD'],
-  ['SOFI'],
-  ['HIMS', 'HOOD', 'SOFI', 'AMD'],
-  ['LMND', 'OSCR', 'WELL', 'ZETA'],
+  ['JPM'],
+  ['COST'],
+  ['NVDA', 'AMD'],
+  ['HIMS', 'OSCR'],
 ]
 
 type SymbolSearchResult = {
@@ -51,6 +51,10 @@ function verdict(signal: SignalRow) {
 }
 
 function evidenceView(signal: SignalRow) {
+  if (signal.deepAnalysis?.status === 'complete') {
+    if (signal.deepAnalysis.view === 'insufficient_evidence') return 'Not enough reliable information'
+    return signal.deepAnalysis.view[0].toUpperCase() + signal.deepAnalysis.view.slice(1)
+  }
   if (signal.abstained) return 'Not enough reliable information'
   if (signal.decision === 'BUY') return 'Favorable'
   if (signal.decision === 'SELL') return 'Unfavorable'
@@ -66,6 +70,12 @@ function formatList(items: string[]) {
 }
 
 function researchAction(signal: SignalRow) {
+  if (signal.deepAnalysis?.status === 'complete') {
+    if (signal.deepAnalysis.view === 'favorable') return 'Evidence currently leans favorable'
+    if (signal.deepAnalysis.view === 'unfavorable') return 'Evidence currently leans unfavorable'
+    if (signal.deepAnalysis.view === 'insufficient_evidence') return 'Wait for reliable evidence'
+    return 'Evidence is mixed'
+  }
   if (signal.abstained) return 'Wait for reliable evidence'
   if (signal.decision === 'BUY') return 'Keep on your watchlist'
   if (signal.decision === 'SELL') return 'Approach with caution'
@@ -73,9 +83,10 @@ function researchAction(signal: SignalRow) {
 }
 
 export default function HomePage() {
+  const [question, setQuestion] = useState('How does the evidence look now?')
   const [watchlistText, setWatchlistText] = useState(() => {
-    if (typeof window === 'undefined') return 'NVDA, AMD, SOFI, HIMS'
-    return new URLSearchParams(window.location.search).get('tickers') || 'NVDA, AMD, SOFI, HIMS'
+    if (typeof window === 'undefined') return 'NVDA'
+    return new URLSearchParams(window.location.search).get('tickers') || 'NVDA'
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
@@ -96,13 +107,13 @@ export default function HomePage() {
   const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
-    setWatchlistText((current) => current === 'NVDA, AMD, SOFI, HIMS' ? symbols.join(', ') : current)
+    setWatchlistText((current) => current === 'NVDA' ? symbols.slice(0, 2).join(', ') : current)
   }, [])
 
   const pickUniverseSymbol = useCallback((symbol: string) => {
     setWatchlistText((current) => {
       const symbols = [...new Set([...current.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean), symbol])]
-      return symbols.slice(0, 12).join(', ')
+      return symbols.slice(0, 2).join(', ')
     })
   }, [])
 
@@ -223,7 +234,7 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ watchlist: symbols }),
+        body: JSON.stringify({ watchlist: symbols, question }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
@@ -341,7 +352,7 @@ export default function HomePage() {
             <span>Evidence-led beta</span>
             <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
           </div>
-          <label className={styles.label}>What company are you curious about?</label>
+          <label className={styles.label}>Which company should we research?</label>
           <div className={styles.symbolSearch}>
             <input
               value={symbolQuery}
@@ -377,7 +388,17 @@ export default function HomePage() {
             className={styles.textarea}
             aria-label="Ticker watchlist"
           />
-          <p className={styles.inputHint}>Add one company for the clearest answer, or add a few to compare.</p>
+          <label className={styles.label} htmlFor="research-question">What do you want to understand?</label>
+          <textarea
+            id="research-question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            rows={3}
+            className={styles.questionInput}
+            placeholder="For example: What are the biggest risks? Is the valuation supported? What changed after earnings?"
+            maxLength={500}
+          />
+          <p className={styles.inputHint}>Ask naturally. The analysts will choose evidence based on your question.</p>
           <div className={styles.sampleRow}>
             {samples.map((symbols) => (
               <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
@@ -425,10 +446,12 @@ export default function HomePage() {
 
               <div className={styles.decisionSentence}>
                 <strong>{activeSignal.symbol} looks {evidenceView(activeSignal).toLowerCase()}.</strong>
-                <span>Confidence is {activeSignal.confidence >= .75 ? 'high' : activeSignal.confidence >= .5 ? 'medium' : 'low'}. <InfoTip label="What confidence means" text="Confidence reflects how complete and consistent the available evidence is. It is not a prediction of future returns." /></span>
+                <span>Confidence is {activeSignal.deepAnalysis?.status === 'complete' ? activeSignal.deepAnalysis.confidence : activeSignal.confidence >= .75 ? 'high' : activeSignal.confidence >= .5 ? 'medium' : 'low'}. <InfoTip label="What confidence means" text="Confidence reflects how complete and consistent the available evidence is. It is not a prediction of future returns." /></span>
               </div>
 
-              {followUp === 'summary' && <>
+              {followUp === 'summary' && activeSignal.deepAnalysis?.status === 'complete' && <DeepResearchBrief signal={activeSignal} />}
+              {followUp === 'summary' && activeSignal.deepAnalysis?.status !== 'complete' && <>
+                <div className={styles.fallbackNotice}><strong>Fast fallback shown</strong><span>Deep company research was unavailable. This view uses price and trend evidence only.</span></div>
                 <p className={styles.answerText}>{activeSignal.aiExplanation || activeSignal.thesis}</p>
                 <div className={styles.answerGrid}>
                   <div><span>Why <InfoTip label="How the recent trend is measured" text="We compare the stock’s average price over about one month with its average over about five months. Exact values remain in Advanced evidence." /></span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
@@ -775,6 +798,21 @@ function EvidenceBalance({ signal }: { signal: SignalRow }) {
   const uncertain = signal.dataQuality === 'ok' ? 0 : 1
   const total = Math.max(1, favorable + caution + uncertain)
   return <section className={styles.evidenceBalance}><div><span>Evidence balance</span><strong>{favorable} favorable · {caution} caution · {uncertain} uncertain</strong></div><div className={styles.balanceBar} aria-label="Evidence balance"><i className={styles.favorableBar} style={{ width: `${favorable / total * 100}%` }}/><i className={styles.cautionBar} style={{ width: `${caution / total * 100}%` }}/><i className={styles.uncertainBar} style={{ width: `${uncertain / total * 100}%` }}/></div><p>Counts summarize the displayed evidence items; they are not probabilities.</p></section>
+}
+
+function DeepResearchBrief({ signal }: { signal: SignalRow }) {
+  const report = signal.deepAnalysis!
+  return <div className={styles.deepBrief}>
+    <p className={styles.askedQuestion}>“{report.question}”</p>
+    <p className={styles.answerText}>{report.directAnswer}</p>
+    <section className={styles.distinctiveBlock}><span>What is distinctive now</span><p>{report.distinctiveNow}</p></section>
+    <div className={styles.debateGrid}>
+      <section><span className={styles.debateLabel}>Strongest evidence</span><ul>{report.strongestEvidence.map((item) => <li key={item}>{item}</li>)}</ul></section>
+      <section><span className={styles.debateLabel}>Strongest counterargument</span><ul>{report.strongestCounterargument.map((item) => <li key={item}>{item}</li>)}</ul></section>
+    </div>
+    <section className={styles.changeBlock}><span>What would change this view</span><ul>{report.changeConditions.map((item) => <li key={item}>{item}</li>)}</ul></section>
+    <section className={styles.sourceShelf}><span>Sources checked</span><div>{report.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}{source.publishedAt ? ` · ${source.publishedAt}` : ''}</a>)}</div></section>
+  </div>
 }
 
 function InfoTip({ label, text }: { label: string; text: string }) {
