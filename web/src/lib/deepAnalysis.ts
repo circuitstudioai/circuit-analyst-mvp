@@ -76,7 +76,7 @@ export async function generateDeepAnalysis(signal: SignalRow, question: string, 
   // Search grounding is not available on every text-only model. Keep the deep
   // research model independently configurable and default to the stable
   // search-capable Flash model.
-  const model = process.env.GEMINI_DEEP_MODEL || 'gemini-2.5-flash'
+  const model = process.env.GEMINI_DEEP_MODEL || 'gemini-3.6-flash'
   const ai = new GoogleGenAI({ apiKey })
   try {
     const researchPrompt = `Act as a research planner for ${signal.symbol}. The user asks: ${JSON.stringify(question)}. Intent: ${intent}.
