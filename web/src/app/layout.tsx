@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { SiteNav } from "./SiteNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Circuit Market Desk | AI Stock Analyst Demo",
-  description: "No-login AI stock analyst demo with accountable watchlist decisions, risks, invalidation, and research-backed signals.",
+  description: "A plain-English stock research desk with accountable decisions, visible risks, and sourced evidence.",
 };
 
 export default function RootLayout({
@@ -24,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body><SiteNav />{children}</body>
     </html>
   );
 }

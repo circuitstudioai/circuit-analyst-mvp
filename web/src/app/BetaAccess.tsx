@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
+import Link from 'next/link'
 import styles from './page.module.css'
 
 type UniverseSymbol = { symbol: string; company_name: string; rank: number }
@@ -24,10 +25,12 @@ export function BetaAccess({
   onToken,
   onLoadWatchlist,
   onPickSymbol,
+  compact = false,
 }: {
   onToken: (token: string | null) => void
   onLoadWatchlist: (symbols: string[]) => void
   onPickSymbol: (symbol: string) => void
+  compact?: boolean
 }) {
   const [session, setSession] = useState<Session | null>(null)
   const [email, setEmail] = useState('')
@@ -100,7 +103,7 @@ export function BetaAccess({
     setMessage('Sending secure link…')
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: `${window.location.origin}/login` },
     })
     setMessage(error ? error.message : 'Check your inbox for the beta sign-in link.')
   }
@@ -159,7 +162,12 @@ export function BetaAccess({
         {session && <button type="button" className={styles.textButton} onClick={signOut}>Sign out</button>}
       </div>
 
-      {!session ? (
+      {!session && compact ? (
+        <div className={styles.compactSignIn}>
+          <p>Sign in to ask a research question and save your history.</p>
+          <Link href="/login">Continue to sign in</Link>
+        </div>
+      ) : !session ? (
         <form className={`${styles.authForm} ${authMode === 'presenter' ? styles.presenterAuthForm : ''}`} onSubmit={authMode === 'presenter' ? signInPresenter : requestMagicLink}>
           <input
             type="email"
@@ -207,14 +215,14 @@ export function BetaAccess({
         </div>
       )}
 
-      <div className={styles.universeRail}>
+      {!compact && <div className={styles.universeRail}>
         <span>Top universe</span>
         {universe.map((item) => (
           <button key={item.symbol} type="button" title={item.company_name} onClick={() => onPickSymbol(item.symbol)}>
             <small>{item.rank}</small>{item.symbol}
           </button>
         ))}
-      </div>
+      </div>}
 
       {session && needsOnboarding && (
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
