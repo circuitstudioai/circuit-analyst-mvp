@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveAnalysisOutcome, executeWithFallback } from './analystHarness'
+import { deriveAnalysisOutcome, executeWithFallback, runCheckpointedStages } from './analystHarness'
 
 describe('analyst harness outcome', () => {
   it('marks a run complete only when every research report completes', () => {
@@ -24,6 +24,45 @@ describe('analyst harness outcome', () => {
       researchStatus: 'partial',
       error: 'Deep research unavailable for 1/2 companies; usage write failed',
     })
+  })
+})
+
+describe('durable analyst stages', () => {
+  it('resumes after the last completed checkpoint', async () => {
+    const records = new Map<string, { status: 'running' | 'complete' | 'failed'; output?: unknown; error?: string }>([
+      ['research', { status: 'complete', output: { facts: ['saved fact'] } }],
+    ])
+    const executed: string[] = []
+    const result = await runCheckpointedStages([
+      { name: 'research', run: async () => { executed.push('research'); return { facts: ['new fact'] } } },
+      { name: 'challenge', run: async (state) => { executed.push('challenge'); return { fact: (state.research as { facts: string[] }).facts[0] } } },
+      { name: 'synthesis', run: async (state) => { executed.push('synthesis'); return { answer: (state.challenge as { fact: string }).fact } } },
+    ], {
+      load: async (name) => records.get(name) || null,
+      save: async (name, record) => { records.set(name, record) },
+    })
+
+    expect(executed).toEqual(['challenge', 'synthesis'])
+    expect(result.state.synthesis).toEqual({ answer: 'saved fact' })
+    expect(result.stages.map((stage) => [stage.name, stage.status, stage.resumed])).toEqual([
+      ['research', 'complete', true],
+      ['challenge', 'complete', false],
+      ['synthesis', 'complete', false],
+    ])
+  })
+
+  it('persists the failed stage without losing earlier work', async () => {
+    const records = new Map<string, { status: 'running' | 'complete' | 'failed'; output?: unknown; error?: string }>()
+    await expect(runCheckpointedStages([
+      { name: 'research', run: async () => ({ facts: ['fact'] }) },
+      { name: 'challenge', run: async () => { throw new Error('provider unavailable') } },
+    ], {
+      load: async (name) => records.get(name) || null,
+      save: async (name, record) => { records.set(name, record) },
+    })).rejects.toThrow('provider unavailable')
+
+    expect(records.get('research')).toMatchObject({ status: 'complete', output: { facts: ['fact'] } })
+    expect(records.get('challenge')).toMatchObject({ status: 'failed', error: 'provider unavailable' })
   })
 })
 

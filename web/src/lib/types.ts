@@ -51,6 +51,11 @@ export type DeepAnalysisReport = {
   sources: DeepAnalysisSource[]
   model?: string
   errorCode?: string
+  stages?: Array<{
+    name: string
+    status: 'running' | 'complete' | 'failed'
+    resumed: boolean
+  }>
 }
 
 export type AnalyzeResponse = {
