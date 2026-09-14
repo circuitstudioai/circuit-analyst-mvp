@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { AnalysisIntent, DeepAnalysisReport, DeepAnalysisSource, SignalRow } from './types'
+import { executeWithFallback } from './analystHarness'
 
 type ResearchFact = { id: string; statement: string; source_url: string; source_title: string; published_at?: string }
 type ResearchPlan = { company_context: string; questions_to_answer: string[]; facts: ResearchFact[] }
@@ -76,29 +77,30 @@ export async function generateDeepAnalysis(signal: SignalRow, question: string, 
   // Search grounding is not available on every text-only model. Keep the deep
   // research model independently configurable and default to the stable
   // search-capable Flash model.
-  const model = process.env.GEMINI_DEEP_MODEL || 'gemini-3.6-flash'
+  const primaryModel = process.env.GEMINI_DEEP_MODEL || 'gemini-3.6-flash'
+  const models = [...new Set([primaryModel, process.env.GEMINI_FALLBACK_MODEL].filter(Boolean) as string[])]
   const ai = new GoogleGenAI({ apiKey })
   try {
     const researchPrompt = `Act as a research planner for ${signal.symbol}. The user asks: ${JSON.stringify(question)}. Intent: ${intent}.
 Find current, company-specific evidence. Prefer SEC filings and company investor-relations sources; use reputable reporting only for material events not in primary sources. Return JSON only with company_context, questions_to_answer (array), and facts (array). Each fact requires id, statement, source_url, source_title, and published_at. Include business model, latest results/guidance, cash flow or margins, sector-appropriate valuation context, company-specific risk, and catalyst when relevant. Maximum ${MAX_FACTS} facts. Do not recommend a trade.`
-    const researchResponse = await ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
-    const plan = validatePlan(jsonFrom(researchResponse.text || ''))
+    const researchRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+    const plan = validatePlan(jsonFrom(researchRun.value.text || ''))
 
     const engineContext = engines.map((row) => ({ engine: row.engine_name, direction: row.direction, confidence: row.confidence, thesis: row.thesis_summary, risks: row.risk_flags })).slice(0, 4)
     const debatePrompt = `Act as two independent equity analysts. Using only the sourced facts and engine context below, produce both the strongest evidence-supported positive case and the strongest challenge case for ${signal.symbol}, tailored to the user's question. Return JSON only: positive_case (1-4 plain-English strings), challenge_case (1-4), change_conditions (1-4), cited_fact_ids (all factual claims used). Do not add facts, prices, or recommendations.
 Question: ${question}
 Facts: ${JSON.stringify(plan.facts)}
 Engine context: ${JSON.stringify(engineContext)}`
-    const debateResponse = await ai.models.generateContent({ model, contents: debatePrompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
-    const debate = validateDebate(jsonFrom(debateResponse.text || ''), new Set(plan.facts.map((fact) => fact.id)))
+    const debateRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: debatePrompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+    const debate = validateDebate(jsonFrom(debateRun.value.text || ''), new Set(plan.facts.map((fact) => fact.id)))
 
     const editorPrompt = `Act as a careful decision editor for a non-financial reader. Answer the question about ${signal.symbol} using only the supplied research and debate. Return JSON only with: view (favorable|mixed|unfavorable|insufficient_evidence), confidence (low|medium|high), direct_answer (2-4 sentences), distinctive_now (1-3 sentences), strongest_evidence (1-4 strings), strongest_counterargument (1-4 strings), change_conditions (1-4 strings), cited_fact_ids. Use everyday language, explain necessary financial terms inline, preserve uncertainty, and never say buy, sell, or trade.
 Question: ${question}
 Company context: ${plan.company_context}
 Facts: ${JSON.stringify(plan.facts)}
 Debate: ${JSON.stringify(debate)}`
-    const editorResponse = await ai.models.generateContent({ model, contents: editorPrompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
-    const edited = jsonFrom(editorResponse.text || '')
+    const editorRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: editorPrompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+    const edited = jsonFrom(editorRun.value.text || '')
     const cited = strings(edited.cited_fact_ids, MAX_FACTS)
     const allowed = new Set(plan.facts.map((fact) => fact.id))
     if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
@@ -115,11 +117,11 @@ Debate: ${JSON.stringify(debate)}`
       directAnswer, distinctiveNow,
       strongestEvidence: strings(edited.strongest_evidence),
       strongestCounterargument: strings(edited.strongest_counterargument),
-      changeConditions: strings(edited.change_conditions), sources, model,
+      changeConditions: strings(edited.change_conditions), sources, model: editorRun.model,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
-    console.warn('[deep-analysis]', JSON.stringify({ symbol: signal.symbol, model, message: message.slice(0, 220) }))
+    console.warn('[deep-analysis]', JSON.stringify({ symbol: signal.symbol, models, message: message.slice(0, 220) }))
     const code = /quota|429|resource_exhausted/i.test(message) ? 'quota'
       : /json|unexpected token|incomplete|citation|sourced facts/i.test(message) ? 'validation'
       : /model|not found|unsupported/i.test(message) ? 'model'

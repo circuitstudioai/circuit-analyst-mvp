@@ -1058,6 +1058,11 @@
   background: #fffdf5;
   box-shadow: 0 22px 70px rgba(16, 26, 29, 0.09);
 }
+.outcomeBanner { display: flex; justify-content: space-between; gap: 16px; margin: -18px -18px 26px; padding: 13px 16px; border-radius: 16px; font-size: 12px; line-height: 1.4; }
+.outcomeBanner span { color: inherit; opacity: .78; text-align: right; }
+.outcome_complete { background: #e5efe7; color: #234c32; }
+.outcome_partial { background: #fff2dc; color: #6c4823; }
+.outcome_technical_only { background: #f7e5df; color: #7b302a; }
 .answerLead { position: relative; padding-right: 120px; }
 .answerLead h2 { margin: 4px 0 0; max-width: 600px; font-size: clamp(28px, 5vw, 48px); line-height: 1.04; letter-spacing: -0.035em; }
 .viewBadge { position: absolute; right: 0; top: 0; padding: 8px 12px; border-radius: 999px; background: #e5efe7; color: #234c32; font-weight: 700; font-size: 13px; }
@@ -1121,6 +1126,8 @@
   .priceJourney svg { height: 165px; }
   .evidenceBalance > div:first-child { flex-direction: column; }
   .companyTabs { margin-left: 0; }
+  .outcomeBanner { flex-direction: column; }
+  .outcomeBanner span { text-align: left; }
 }
 
 .feedbackModalBackdrop {
