@@ -981,6 +981,18 @@
   width: min(920px, calc(100% - 32px));
   margin: 36px auto 24px;
 }
+.threadBar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr) auto; gap: 10px; align-items: center; margin-bottom: 14px; padding: 12px; border: 1px solid rgba(16,26,29,.14); border-radius: 16px; background: rgba(255,253,245,.86); }
+.threadBar span, .threadBar strong { display: block; }
+.threadBar span { color: #687579; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.threadBar strong { margin-top: 3px; font-size: 13px; }
+.threadBar select, .threadBar button { min-height: 40px; border: 1px solid rgba(16,26,29,.18); border-radius: 10px; background: #fffdf5; color: #101a1d; padding: 8px 10px; }
+.threadBar button { background: #101a1d; color: #fffdf5; font-weight: 800; cursor: pointer; }
+.transcript { display: grid; gap: 10px; max-height: 380px; margin-bottom: 14px; overflow-y: auto; padding: 16px; border-radius: 20px; background: rgba(16,26,29,.06); }
+.transcript > div { max-width: 82%; padding: 12px 14px; border-radius: 16px; }
+.transcript span { display: block; margin-bottom: 5px; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.transcript p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+.userMessage { justify-self: end; background: #101a1d; color: #fffdf5; }
+.analystMessage { justify-self: start; background: #fffdf5; color: #101a1d; }
 
 .journey {
   margin-bottom: 18px;
@@ -1108,6 +1120,13 @@
 .followUpAnswer p:last-child { margin-bottom: 0; }
 .followUpAnswer li + li { margin-top: 8px; }
 .followUpRow { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 20px; border-top: 1px solid rgba(16, 26, 29, 0.1); }
+.followUpComposer { display: grid; gap: 8px; margin-top: 18px; padding: 18px; border-radius: 18px; background: #f3efe3; }
+.followUpComposer label { font-size: 12px; font-weight: 850; }
+.followUpComposer > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.followUpComposer input { min-width: 0; min-height: 46px; border: 1px solid rgba(16,26,29,.2); border-radius: 12px; background: #fffdf5; padding: 10px 13px; font: inherit; }
+.followUpComposer button { min-width: 76px; border: 0; border-radius: 12px; background: #101a1d; color: #fffdf5; font-weight: 850; cursor: pointer; }
+.followUpComposer button:disabled { cursor: wait; opacity: .5; }
+.followUpComposer small { color: #687579; line-height: 1.45; }
 .answerCaveat { margin: 18px 0 0; color: #6a7476; font-size: 12px; line-height: 1.5; }
 
 .advancedDesk { width: min(1180px, calc(100% - 32px)); margin: 26px auto 64px; }
@@ -1129,6 +1148,8 @@
   .priceJourney svg { height: 165px; }
   .evidenceBalance > div:first-child { flex-direction: column; }
   .companyTabs { margin-left: 0; }
+  .threadBar { grid-template-columns: 1fr; }
+  .transcript > div { max-width: 94%; }
   .outcomeBanner { flex-direction: column; }
   .outcomeBanner span { text-align: left; }
 }

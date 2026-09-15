@@ -29,6 +29,9 @@ type FeedbackDraft = {
 
 type FollowUp = 'summary' | 'simple' | 'risks' | 'valuation' | 'evidence' | 'change'
 
+type ResearchThread = { id: string; title: string; symbols: string[]; updated_at: string }
+type ResearchMessage = { id: number; role: 'user' | 'assistant'; content: string; runId?: number | null; createdAt?: string }
+
 const followUps: Array<{ id: FollowUp; label: string }> = [
   { id: 'simple', label: 'Explain this simply' },
   { id: 'risks', label: 'What could go wrong?' },
@@ -104,6 +107,10 @@ export default function HomePage() {
   const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null)
   const [followUp, setFollowUp] = useState<FollowUp>('summary')
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [threads, setThreads] = useState<ResearchThread[]>([])
+  const [messages, setMessages] = useState<ResearchMessage[]>([])
+  const [followUpQuestion, setFollowUpQuestion] = useState('')
   const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
@@ -204,6 +211,27 @@ export default function HomePage() {
     }
   }, [accessToken])
 
+  const refreshConversations = useCallback(async (threadId?: string | null) => {
+    if (!accessToken) return
+    const [threadResponse, messageResponse] = await Promise.all([
+      fetch('/api/conversations', { cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` } }),
+      threadId ? fetch(`/api/conversations?threadId=${encodeURIComponent(threadId)}`, { cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` } }) : null,
+    ])
+    if (threadResponse.ok) {
+      const data = await threadResponse.json()
+      setThreads(Array.isArray(data?.threads) ? data.threads : [])
+    }
+    if (messageResponse?.ok) {
+      const data = await messageResponse.json()
+      setMessages(Array.isArray(data?.messages) ? data.messages : [])
+    }
+  }, [accessToken])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refreshConversations(conversationId) }, 0)
+    return () => window.clearTimeout(timer)
+  }, [conversationId, refreshConversations])
+
   const trackEvent = useCallback((eventName: string, fields: Record<string, unknown> = {}) => {
     if (!accessToken) return
     void fetch('/api/events', {
@@ -224,7 +252,7 @@ export default function HomePage() {
     })
   }, [result, trackEvent])
 
-  async function runAnalysis(symbols = watchlist, resumeRunId?: number) {
+  async function runAnalysis(symbols = watchlist, resumeRunId?: number, askedQuestion = question) {
     if (!accessToken) {
       setError('Sign in with a beta magic link to run analysis.')
       return
@@ -235,11 +263,13 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ watchlist: symbols, question, resumeRunId }),
+        body: JSON.stringify({ watchlist: symbols, question: askedQuestion, resumeRunId, threadId: conversationId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
       setResult(data)
+      setQuestion(askedQuestion)
+      if (data.conversationId) setConversationId(data.conversationId)
       setActiveSymbol(data.signals?.[0]?.symbol || null)
       setFollowUp('summary')
       const runId = Number(data?.saved?.runId)
@@ -259,6 +289,7 @@ export default function HomePage() {
         body: JSON.stringify({ symbols }),
       })
       void fetchRecentRuns()
+      void refreshConversations(data.conversationId)
       const url = new URL(window.location.href)
       url.searchParams.set('tickers', symbols.join(','))
       window.history.replaceState(null, '', url)
@@ -267,6 +298,27 @@ export default function HomePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function askFollowUp() {
+    const next = followUpQuestion.replace(/\s+/g, ' ').trim()
+    if (!next) return
+    setFollowUpQuestion('')
+    await runAnalysis(result?.watchlist || watchlist, undefined, next)
+  }
+
+  async function openConversation(thread: ResearchThread) {
+    setConversationId(thread.id)
+    setWatchlistText(thread.symbols.join(', '))
+    setResult(null)
+    setMessages([])
+  }
+
+  function newConversation() {
+    setConversationId(null)
+    setMessages([])
+    setResult(null)
+    setFollowUp('summary')
   }
 
   function beginFeedback(signal: SignalRow, helpful: boolean) {
@@ -415,6 +467,24 @@ export default function HomePage() {
       </section>
 
       <section className={styles.conversation} aria-live="polite">
+        {accessToken && (
+          <div className={styles.threadBar}>
+            <div><span>Your research conversations</span><strong>{conversationId ? 'Continuing with context' : 'New conversation'}</strong></div>
+            <select value={conversationId || ''} onChange={(event) => {
+              const thread = threads.find((item) => item.id === event.target.value)
+              if (thread) void openConversation(thread)
+            }} aria-label="Open a research conversation">
+              <option value="" disabled>Select a previous conversation</option>
+              {threads.map((thread) => <option key={thread.id} value={thread.id}>{thread.title}</option>)}
+            </select>
+            <button type="button" onClick={newConversation}>New conversation</button>
+          </div>
+        )}
+        {messages.length > 0 && (
+          <div className={styles.transcript} aria-label="Conversation history">
+            {messages.map((message) => <div key={message.id} className={message.role === 'user' ? styles.userMessage : styles.analystMessage}><span>{message.role === 'user' ? 'You' : 'Circuit'}</span><p>{message.content}</p></div>)}
+          </div>
+        )}
         <ResearchJourney loading={loading} result={result} />
         {!activeSignal ? (
           <div className={styles.welcomeMessage}>
@@ -487,6 +557,11 @@ export default function HomePage() {
                 {followUps.map((item) => <button key={item.id} aria-pressed={followUp === item.id} onClick={() => setFollowUp(item.id)}>{item.label}</button>)}
                 {followUp !== 'summary' && <button onClick={() => setFollowUp('summary')}>Back to summary</button>}
               </div>
+              <form className={styles.followUpComposer} onSubmit={(event) => { event.preventDefault(); void askFollowUp() }}>
+                <label htmlFor="follow-up-question">Continue the conversation</label>
+                <div><input id="follow-up-question" value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} placeholder={`Ask a follow-up about ${activeSignal.symbol}…`} maxLength={500}/><button type="submit" disabled={loading || !followUpQuestion.trim()}>{loading ? 'Thinking…' : 'Ask'}</button></div>
+                <small>I’ll keep the prior questions and answers in context, then verify new factual claims.</small>
+              </form>
               <p className={styles.answerCaveat}>Educational research support only. The evidence can be incomplete or wrong; verify it before making financial decisions.</p>
             </article>
           </>

@@ -68,6 +68,7 @@ export type AnalyzeResponse = {
   pipeline: PipelineStep[]
   shareId: string
   cached?: boolean
+  conversationId?: string | null
   outcome?: {
     status: 'completed' | 'partial' | 'failed'
     researchStatus: 'complete' | 'partial' | 'technical_only'

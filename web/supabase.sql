@@ -134,6 +134,25 @@ create table if not exists analysis_stages (
   unique(run_id, ticker, stage_name)
 );
 
+create table if not exists research_threads (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  title text not null,
+  symbols text[] not null default '{}',
+  thesis_state jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists research_messages (
+  id bigserial primary key,
+  thread_id uuid not null references research_threads(id) on delete cascade,
+  role text not null check (role in ('user','assistant')),
+  content text not null,
+  run_id bigint references analysis_runs(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_signals_run_id on signals(run_id);
 create index if not exists idx_engine_outputs_ticker_ts on engine_outputs(ticker, run_timestamp desc);
 create index if not exists idx_engine_outputs_engine on engine_outputs(engine_name);
@@ -143,3 +162,5 @@ create index if not exists idx_user_watchlists_user on user_watchlists(user_id);
 create index if not exists idx_saved_reports_user on saved_reports(user_id, created_at desc);
 create index if not exists idx_provider_usage_created on provider_usage(created_at desc);
 create index if not exists idx_analysis_stages_run on analysis_stages(run_id, ticker);
+create index if not exists idx_research_threads_user on research_threads(user_id, updated_at desc);
+create index if not exists idx_research_messages_thread on research_messages(thread_id, created_at);
