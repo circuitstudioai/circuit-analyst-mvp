@@ -15,7 +15,9 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Optional integrations
 
-- `GEMINI_API_KEY`: adds concise analyst notes to each signal.
+- `GEMINI_API_KEY`: enables question-aware deep research.
+- `GEMINI_DEEP_MODEL`: optional primary grounded-research model (defaults to `gemini-3.6-flash`).
+- `GEMINI_FALLBACK_MODEL`: optional secondary Gemini model used after bounded retries on quota, timeout, network, or provider failures.
 - `GEMINI_MODEL`: overrides the Gemini model (defaults to stable `gemini-3.5-flash`).
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.

@@ -63,6 +63,11 @@ export type AnalyzeResponse = {
   pipeline: PipelineStep[]
   shareId: string
   cached?: boolean
+  outcome?: {
+    status: 'completed' | 'partial' | 'failed'
+    researchStatus: 'complete' | 'partial' | 'technical_only'
+    error?: string
+  }
   aiSummary?: {
     status: 'complete' | 'partial' | 'fallback' | 'skipped'
     model: string | null

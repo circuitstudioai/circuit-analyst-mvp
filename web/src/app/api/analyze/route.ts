@@ -6,6 +6,7 @@ import { runMultiEngineAnalysis } from '@/lib/multiEngine'
 import { completeRun, ingestEngineOutputs, saveConsensus, saveDeepReports, saveProviderUsage, saveRun } from '@/lib/supabase'
 import { requireBetaUser } from '@/lib/betaAuth'
 import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
+import { deriveAnalysisOutcome } from '@/lib/analystHarness'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 2
@@ -86,7 +87,8 @@ export async function POST(req: NextRequest) {
     const cached = responseCache.get(cacheKey)
     if (cached && cached.expires > Date.now()) {
       const cachedRunId = Number((cached.payload as { saved?: { runId?: number } }).saved?.runId) || undefined
-      await finishAnalysisRequest(requestId, { runId: cachedRunId, status: 'cached', durationMs: Date.now() - startedAt })
+      const cachedOutcome = (cached.payload as { outcome?: ReturnType<typeof deriveAnalysisOutcome> }).outcome
+      await finishAnalysisRequest(requestId, { runId: cachedRunId, status: cachedOutcome?.status === 'completed' ? 'cached' : 'partial', durationMs: Date.now() - startedAt, error: cachedOutcome?.error })
       await recordProductEvent(auth.user.id, 'analysis_completed', {
         runId: cachedRunId,
         properties: { symbolCount: watchlist.length, cached: true, persisted: Boolean(cachedRunId) },
@@ -129,9 +131,9 @@ export async function POST(req: NextRequest) {
         ...('error' in reportWrite && reportWrite.error ? [reportWrite.error] : []),
         ...('error' in usageWrite && usageWrite.error ? [usageWrite.error] : []),
       ]
-      const finalStatus = writeErrors.length ? 'partial' : 'completed'
-      const completion = await completeRun(saved.runId, finalStatus, writeErrors.join('; ') || undefined)
-      pipelineResult = { saved, ingested, consensus, reports: { completed: completedReports, fallback: reports.length - completedReports }, completion }
+      const outcome = deriveAnalysisOutcome(reports.map((report) => report.status), writeErrors)
+      const completion = await completeRun(saved.runId, outcome.status, outcome.error)
+      pipelineResult = { saved, ingested, consensus, reports: { completed: completedReports, fallback: reports.length - completedReports }, outcome, completion }
     }
     const persistenceStep = {
       label: 'Persistence',
@@ -145,14 +147,20 @@ export async function POST(req: NextRequest) {
     const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], ...pipelineResult }
 
     responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload })
+    const outcome = (pipelineResult.outcome || {
+      status: saved.ok ? 'partial' : 'failed',
+      researchStatus: 'technical_only',
+      error: saved.error || 'Research pipeline was not persisted',
+    }) as ReturnType<typeof deriveAnalysisOutcome>
     await finishAnalysisRequest(requestId, {
       runId: saved.runId,
-      status: saved.ok ? 'completed' : 'partial',
+      status: outcome.status,
       durationMs: Date.now() - startedAt,
+      error: outcome.error,
     })
     await recordProductEvent(auth.user.id, 'analysis_completed', {
       runId: saved.runId,
-      properties: { symbolCount: watchlist.length, cached: false, persisted: Boolean(saved.ok) },
+      properties: { symbolCount: watchlist.length, cached: false, persisted: Boolean(saved.ok), outcome: outcome.status, researchStatus: outcome.researchStatus },
     })
     return NextResponse.json(payload)
   } catch (e: unknown) {

@@ -435,6 +435,12 @@ export default function HomePage() {
               </div>
             )}
             <article className={styles.answerCard}>
+              {result?.outcome && (
+                <div className={`${styles.outcomeBanner} ${styles[`outcome_${result.outcome.researchStatus}`]}`}>
+                  <strong>{result.outcome.researchStatus === 'complete' ? `AI research complete — ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Partial research result' : 'Technical snapshot only'}</strong>
+                  <span>{result.outcome.researchStatus === 'complete' ? 'Research, challenge, synthesis, and citation checks completed.' : result.outcome.error || 'Some research stages were unavailable.'}</span>
+                </div>
+              )}
               <div className={styles.answerLead}>
                 <span className={styles.assistantMark}>C</span>
                 <div>
@@ -760,18 +766,20 @@ function ResearchJourney({ loading, result }: { loading: boolean; result: Analyz
   }, [loading, result, stages.length])
   if (!loading && !result) return null
   const displayedActive = !loading && result ? stages.length : active
+  const researchComplete = result?.outcome?.researchStatus === 'complete'
   const actualDetail = (name: string, fallback: string) => {
     const label = name === 'Market reader' ? 'Public price fetch' : name === 'Evidence analyst' ? 'Research evidence' : name === 'Decision editor' ? 'AI summary' : 'Rule scoring'
     return result?.pipeline.find((step) => step.label === label)?.detail || fallback
   }
   return (
     <section className={styles.journey} aria-label="Research progress">
-      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : 'Research review complete'}</h2></div><span>{Math.max(displayedActive, 1)}/{stages.length}</span></div>
+      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{Math.max(displayedActive, 1)}/{stages.length}</span></div>
       <ol>
         {stages.map(([name, detail], index) => {
-          const complete = !loading || index < displayedActive
+          const blockedByResearch = !loading && Boolean(result) && !researchComplete && index >= 1
+          const complete = !blockedByResearch && (!loading || index < displayedActive)
           const working = loading && index === displayedActive
-          return <li key={name} className={complete ? styles.stageComplete : working ? styles.stageWorking : styles.stageWaiting}><i>{complete ? '✓' : working ? '•' : index + 1}</i><div><strong>{name}</strong><span>{complete ? actualDetail(name, detail) : detail}</span></div><small>{complete ? 'Complete' : working ? 'Working' : 'Waiting'}</small></li>
+          return <li key={name} className={complete ? styles.stageComplete : working ? styles.stageWorking : styles.stageWaiting}><i>{complete ? '✓' : working ? '•' : blockedByResearch ? '!' : index + 1}</i><div><strong>{name}</strong><span>{complete ? actualDetail(name, detail) : blockedByResearch ? result?.outcome?.error || 'Research provider unavailable' : detail}</span></div><small>{complete ? 'Complete' : working ? 'Working' : blockedByResearch ? 'Unavailable' : 'Waiting'}</small></li>
         })}
       </ol>
     </section>
