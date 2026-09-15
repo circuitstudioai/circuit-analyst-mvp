@@ -56,6 +56,15 @@ export async function userOwnsRun(userId: string, runId: number) {
   return Boolean(data)
 }
 
+export async function analysisRunForResume(userId: string, runId: number) {
+  const supabase = serviceClient()
+  if (!supabase || !await userOwnsRun(userId, runId)) return null
+  const { data } = await supabase.from('analysis_runs')
+    .select('id,watchlist,question,intent,status')
+    .eq('id', runId).limit(1).maybeSingle()
+  return data || null
+}
+
 export async function userBetaState(userId: string) {
   const supabase = serviceClient()
   if (!supabase) return { profile: null, watchlist: [], usage: null }

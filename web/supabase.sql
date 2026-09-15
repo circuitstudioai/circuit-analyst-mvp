@@ -119,6 +119,21 @@ create table if not exists provider_usage (
   created_at timestamptz not null default now()
 );
 
+create table if not exists analysis_stages (
+  id bigserial primary key,
+  run_id bigint not null references analysis_runs(id) on delete cascade,
+  ticker text not null,
+  stage_name text not null check (stage_name in ('research','challenge','synthesis')),
+  status text not null check (status in ('running','complete','failed')),
+  output_payload jsonb,
+  error_message text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(run_id, ticker, stage_name)
+);
+
 create index if not exists idx_signals_run_id on signals(run_id);
 create index if not exists idx_engine_outputs_ticker_ts on engine_outputs(ticker, run_timestamp desc);
 create index if not exists idx_engine_outputs_engine on engine_outputs(engine_name);
@@ -127,3 +142,4 @@ create index if not exists idx_daily_briefs_date on daily_briefs(brief_date desc
 create index if not exists idx_user_watchlists_user on user_watchlists(user_id);
 create index if not exists idx_saved_reports_user on saved_reports(user_id, created_at desc);
 create index if not exists idx_provider_usage_created on provider_usage(created_at desc);
+create index if not exists idx_analysis_stages_run on analysis_stages(run_id, ticker);

@@ -3,9 +3,9 @@ import { analyzeWatchlist } from '@/lib/engine'
 import { computeConsensus } from '@/lib/consensus'
 import { classifyIntent, generateDeepAnalysis } from '@/lib/deepAnalysis'
 import { runMultiEngineAnalysis } from '@/lib/multiEngine'
-import { completeRun, ingestEngineOutputs, saveConsensus, saveDeepReports, saveProviderUsage, saveRun } from '@/lib/supabase'
+import { analysisStageStore, completeRun, ingestEngineOutputs, saveConsensus, saveDeepReports, saveProviderUsage, saveRun } from '@/lib/supabase'
 import { requireBetaUser } from '@/lib/betaAuth'
-import { claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
+import { analysisRunForResume, claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
 import { deriveAnalysisOutcome } from '@/lib/analystHarness'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
@@ -67,25 +67,36 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}))
-    const watchlist = normalizeWatchlist(body?.watchlist)
+    let watchlist = normalizeWatchlist(body?.watchlist)
     if (!watchlist.length) {
       return NextResponse.json({ error: 'Enter at least one valid ticker.' }, { status: 400 })
     }
-    const question = normalizeQuestion(body?.question, watchlist)
-    const intent = classifyIntent(question, watchlist.length)
+    let question = normalizeQuestion(body?.question, watchlist)
+    let intent = classifyIntent(question, watchlist.length)
+    const resumeRunId = Number(body?.resumeRunId) || undefined
 
-    const quota = await claimAnalysisQuota(auth.user.id, watchlist.length)
-    if (!quota.allowed) {
-      return NextResponse.json({
-        error: 'Daily beta quota reached. Try again tomorrow.',
-        quota: { analysesUsed: quota.analysis_count, analysesLimit: 3, symbolsUsed: quota.symbol_count, symbolsLimit: 24 },
-      }, { status: 429 })
+    if (resumeRunId) {
+      const previous = await analysisRunForResume(auth.user.id, resumeRunId)
+      if (!previous) {
+        return NextResponse.json({ error: 'Analysis run not found.' }, { status: 404 })
+      }
+      watchlist = normalizeWatchlist(previous.watchlist)
+      question = normalizeQuestion(previous.question, watchlist)
+      intent = classifyIntent(question, watchlist.length)
+    } else {
+      const quota = await claimAnalysisQuota(auth.user.id, watchlist.length)
+      if (!quota.allowed) {
+        return NextResponse.json({
+          error: 'Daily beta quota reached. Try again tomorrow.',
+          quota: { analysesUsed: quota.analysis_count, analysesLimit: 3, symbolsUsed: quota.symbol_count, symbolsLimit: 24 },
+        }, { status: 429 })
+      }
     }
     requestId = await createAnalysisRequest(auth.user.id, watchlist)
 
     const cacheKey = `${watchlist.join(',')}|${intent}|${question.toLowerCase()}`
     const cached = responseCache.get(cacheKey)
-    if (cached && cached.expires > Date.now()) {
+    if (!resumeRunId && cached && cached.expires > Date.now()) {
       const cachedRunId = Number((cached.payload as { saved?: { runId?: number } }).saved?.runId) || undefined
       const cachedOutcome = (cached.payload as { outcome?: ReturnType<typeof deriveAnalysisOutcome> }).outcome
       await finishAnalysisRequest(requestId, { runId: cachedRunId, status: cachedOutcome?.status === 'completed' ? 'cached' : 'partial', durationMs: Date.now() - startedAt, error: cachedOutcome?.error })
@@ -99,7 +110,7 @@ export async function POST(req: NextRequest) {
     const base = await analyzeWatchlist(watchlist)
     const draft = { ...base, question, intent }
 
-    const saved = await saveRun(draft)
+    const saved = resumeRunId ? { ok: true as const, runId: resumeRunId } : await saveRun(draft)
     let pipelineResult: Record<string, unknown> = { saved }
 
     if (saved.ok && saved.runId) {
@@ -113,7 +124,13 @@ export async function POST(req: NextRequest) {
         .map((rows) => computeConsensus(rows))
         .filter((row) => row !== null)
       const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
-      const reports = await Promise.all(draft.signals.map((signal) => generateDeepAnalysis(signal, question, intent, engineOutputs.filter((row) => row.ticker === signal.symbol))))
+      const reports = await Promise.all(draft.signals.map((signal) => generateDeepAnalysis(
+        signal,
+        question,
+        intent,
+        engineOutputs.filter((row) => row.ticker === signal.symbol),
+        analysisStageStore(saved.runId!, signal.symbol),
+      )))
       draft.signals = draft.signals.map((signal) => ({ ...signal, deepAnalysis: reports.find((report) => report.symbol === signal.symbol) }))
       const reportWrite = await saveDeepReports(saved.runId, question, intent, reports)
       const completedReports = reports.filter((report) => report.status === 'complete').length
@@ -160,7 +177,7 @@ export async function POST(req: NextRequest) {
     })
     await recordProductEvent(auth.user.id, 'analysis_completed', {
       runId: saved.runId,
-      properties: { symbolCount: watchlist.length, cached: false, persisted: Boolean(saved.ok), outcome: outcome.status, researchStatus: outcome.researchStatus },
+      properties: { symbolCount: watchlist.length, cached: false, resumed: Boolean(resumeRunId), persisted: Boolean(saved.ok), outcome: outcome.status, researchStatus: outcome.researchStatus },
     })
     return NextResponse.json(payload)
   } catch (e: unknown) {

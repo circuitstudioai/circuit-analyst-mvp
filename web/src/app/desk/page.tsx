@@ -166,6 +166,7 @@ export default function HomePage() {
 
   const visibleRuns = accessToken ? recentRuns : []
   const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
+  const resumableRunId = result?.outcome?.researchStatus !== 'complete' ? result?.saved?.runId : undefined
 
   async function fetchRecentRuns() {
     if (!accessToken) {
@@ -223,7 +224,7 @@ export default function HomePage() {
     })
   }, [result, trackEvent])
 
-  async function runAnalysis(symbols = watchlist) {
+  async function runAnalysis(symbols = watchlist, resumeRunId?: number) {
     if (!accessToken) {
       setError('Sign in with a beta magic link to run analysis.')
       return
@@ -234,7 +235,7 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ watchlist: symbols, question }),
+        body: JSON.stringify({ watchlist: symbols, question, resumeRunId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Analyze failed')
@@ -440,6 +441,11 @@ export default function HomePage() {
                   <strong>{result.outcome.researchStatus === 'complete' ? `AI research complete — ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Partial research result' : 'Technical snapshot only'}</strong>
                   <span>{result.outcome.researchStatus === 'complete' ? 'Research, challenge, synthesis, and citation checks completed.' : result.outcome.error || 'Some research stages were unavailable.'}</span>
                 </div>
+              )}
+              {resumableRunId && result && (
+                <button className={styles.resumeButton} type="button" disabled={loading} onClick={() => runAnalysis(result.watchlist, resumableRunId)}>
+                  {loading ? 'Resuming research…' : 'Resume failed research stages'}
+                </button>
               )}
               <div className={styles.answerLead}>
                 <span className={styles.assistantMark}>C</span>
@@ -753,11 +759,11 @@ function PipelineItem({ step }: { step: PipelineStep }) {
 function ResearchJourney({ loading, result }: { loading: boolean; result: AnalyzeResponse | null }) {
   const [active, setActive] = useState(0)
   const stages = [
-    ['Market reader', 'Gathering current price history'],
-    ['Evidence analyst', 'Checking research and company context'],
-    ['Risk reviewer', 'Testing what could weaken the case'],
-    ['Decision editor', 'Reconciling the evidence in plain English'],
-  ]
+    ['Market reader', 'Gathering current price history', null],
+    ['Evidence analyst', 'Checking research and company context', 'research'],
+    ['Risk reviewer', 'Testing what could weaken the case', 'challenge'],
+    ['Decision editor', 'Reconciling the evidence in plain English', 'synthesis'],
+  ] as const
   useEffect(() => {
     if (!loading) return
     const reset = window.setTimeout(() => setActive(1), 0)
@@ -775,11 +781,13 @@ function ResearchJourney({ loading, result }: { loading: boolean; result: Analyz
     <section className={styles.journey} aria-label="Research progress">
       <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{Math.max(displayedActive, 1)}/{stages.length}</span></div>
       <ol>
-        {stages.map(([name, detail], index) => {
+        {stages.map(([name, detail, checkpointName], index) => {
+          const checkpoint = checkpointName ? result?.signals[0]?.deepAnalysis?.stages?.find((stage) => stage.name === checkpointName) : undefined
           const blockedByResearch = !loading && Boolean(result) && !researchComplete && index >= 1
           const complete = !blockedByResearch && (!loading || index < displayedActive)
           const working = loading && index === displayedActive
-          return <li key={name} className={complete ? styles.stageComplete : working ? styles.stageWorking : styles.stageWaiting}><i>{complete ? '✓' : working ? '•' : blockedByResearch ? '!' : index + 1}</i><div><strong>{name}</strong><span>{complete ? actualDetail(name, detail) : blockedByResearch ? result?.outcome?.error || 'Research provider unavailable' : detail}</span></div><small>{complete ? 'Complete' : working ? 'Working' : blockedByResearch ? 'Unavailable' : 'Waiting'}</small></li>
+          const checkpointFailed = checkpoint?.status === 'failed'
+          return <li key={name} className={complete ? styles.stageComplete : working ? styles.stageWorking : styles.stageWaiting}><i>{complete ? '✓' : working ? '•' : blockedByResearch || checkpointFailed ? '!' : index + 1}</i><div><strong>{name}</strong><span>{complete ? actualDetail(name, detail) : blockedByResearch ? result?.outcome?.error || 'Research provider unavailable' : detail}</span></div><small>{complete ? checkpoint?.resumed ? 'Resumed' : 'Complete' : working ? 'Working' : blockedByResearch || checkpointFailed ? 'Unavailable' : 'Waiting'}</small></li>
         })}
       </ol>
     </section>

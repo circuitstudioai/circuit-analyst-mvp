@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { AnalysisIntent, DeepAnalysisReport, DeepAnalysisSource, SignalRow } from './types'
-import { executeWithFallback } from './analystHarness'
+import { CheckpointedStageError, executeWithFallback, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
 
 type ResearchFact = { id: string; statement: string; source_url: string; source_title: string; published_at?: string }
 type ResearchPlan = { company_context: string; questions_to_answer: string[]; facts: ResearchFact[] }
@@ -58,7 +58,7 @@ function validateDebate(value: Record<string, unknown>, factIds: Set<string>): D
   return { positive_case: positive, challenge_case: challenge, change_conditions: changes, cited_fact_ids: cited }
 }
 
-function fallback(signal: SignalRow, question: string, intent: AnalysisIntent, code: string): DeepAnalysisReport {
+function fallback(signal: SignalRow, question: string, intent: AnalysisIntent, code: string, stages?: StageTrace[]): DeepAnalysisReport {
   return {
     symbol: signal.symbol, question, intent, status: 'fallback',
     view: signal.abstained ? 'insufficient_evidence' : signal.decision === 'BUY' ? 'favorable' : signal.decision === 'SELL' ? 'unfavorable' : 'mixed',
@@ -67,11 +67,25 @@ function fallback(signal: SignalRow, question: string, intent: AnalysisIntent, c
     distinctiveNow: 'Deep company research was unavailable, so this is only the price-and-trend fallback.',
     strongestEvidence: signal.reasons.slice(0, 3),
     strongestCounterargument: [...signal.riskFlags, ...signal.bearCase].slice(0, 3),
-    changeConditions: [signal.invalidation], sources: [], errorCode: code,
+    changeConditions: [signal.invalidation], sources: [], errorCode: code, stages,
   }
 }
 
-export async function generateDeepAnalysis(signal: SignalRow, question: string, intent: AnalysisIntent, engines: EngineOutput[]): Promise<DeepAnalysisReport> {
+function memoryStageStore(): StageCheckpointStore {
+  const records = new Map<string, StageRecord>()
+  return {
+    load: async (name) => records.get(name) || null,
+    save: async (name, record) => { records.set(name, record) },
+  }
+}
+
+export async function generateDeepAnalysis(
+  signal: SignalRow,
+  question: string,
+  intent: AnalysisIntent,
+  engines: EngineOutput[],
+  checkpointStore: StageCheckpointStore = memoryStageStore(),
+): Promise<DeepAnalysisReport> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return fallback(signal, question, intent, 'not_configured')
   // Search grounding is not available on every text-only model. Keep the deep
@@ -83,42 +97,61 @@ export async function generateDeepAnalysis(signal: SignalRow, question: string, 
   try {
     const researchPrompt = `Act as a research planner for ${signal.symbol}. The user asks: ${JSON.stringify(question)}. Intent: ${intent}.
 Find current, company-specific evidence. Prefer SEC filings and company investor-relations sources; use reputable reporting only for material events not in primary sources. Return JSON only with company_context, questions_to_answer (array), and facts (array). Each fact requires id, statement, source_url, source_title, and published_at. Include business model, latest results/guidance, cash flow or margins, sector-appropriate valuation context, company-specific risk, and catalyst when relevant. Maximum ${MAX_FACTS} facts. Do not recommend a trade.`
-    const researchRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-    const plan = validatePlan(jsonFrom(researchRun.value.text || ''))
-
     const engineContext = engines.map((row) => ({ engine: row.engine_name, direction: row.direction, confidence: row.confidence, thesis: row.thesis_summary, risks: row.risk_flags })).slice(0, 4)
-    const debatePrompt = `Act as two independent equity analysts. Using only the sourced facts and engine context below, produce both the strongest evidence-supported positive case and the strongest challenge case for ${signal.symbol}, tailored to the user's question. Return JSON only: positive_case (1-4 plain-English strings), challenge_case (1-4), change_conditions (1-4), cited_fact_ids (all factual claims used). Do not add facts, prices, or recommendations.
+    const execution = await runCheckpointedStages([
+      {
+        name: 'research',
+        run: async () => {
+          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+          return { plan: validatePlan(jsonFrom(response.value.text || '')), model: response.model, attempts: response.attempts }
+        },
+      },
+      {
+        name: 'challenge',
+        run: async (state) => {
+          const plan = (state.research as { plan: ResearchPlan }).plan
+          const prompt = `Act as two independent equity analysts. Using only the sourced facts and engine context below, produce both the strongest evidence-supported positive case and the strongest challenge case for ${signal.symbol}, tailored to the user's question. Return JSON only: positive_case (1-4 plain-English strings), challenge_case (1-4), change_conditions (1-4), cited_fact_ids (all factual claims used). Do not add facts, prices, or recommendations.
 Question: ${question}
 Facts: ${JSON.stringify(plan.facts)}
 Engine context: ${JSON.stringify(engineContext)}`
-    const debateRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: debatePrompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-    const debate = validateDebate(jsonFrom(debateRun.value.text || ''), new Set(plan.facts.map((fact) => fact.id)))
-
-    const editorPrompt = `Act as a careful decision editor for a non-financial reader. Answer the question about ${signal.symbol} using only the supplied research and debate. Return JSON only with: view (favorable|mixed|unfavorable|insufficient_evidence), confidence (low|medium|high), direct_answer (2-4 sentences), distinctive_now (1-3 sentences), strongest_evidence (1-4 strings), strongest_counterargument (1-4 strings), change_conditions (1-4 strings), cited_fact_ids. Use everyday language, explain necessary financial terms inline, preserve uncertainty, and never say buy, sell, or trade.
+          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+          return { debate: validateDebate(jsonFrom(response.value.text || ''), new Set(plan.facts.map((fact) => fact.id))), model: response.model, attempts: response.attempts }
+        },
+      },
+      {
+        name: 'synthesis',
+        run: async (state) => {
+          const plan = (state.research as { plan: ResearchPlan }).plan
+          const debate = (state.challenge as { debate: Debate }).debate
+          const prompt = `Act as a careful decision editor for a non-financial reader. Answer the question about ${signal.symbol} using only the supplied research and debate. Return JSON only with: view (favorable|mixed|unfavorable|insufficient_evidence), confidence (low|medium|high), direct_answer (2-4 sentences), distinctive_now (1-3 sentences), strongest_evidence (1-4 strings), strongest_counterargument (1-4 strings), change_conditions (1-4 strings), cited_fact_ids. Use everyday language, explain necessary financial terms inline, preserve uncertainty, and never say buy, sell, or trade.
 Question: ${question}
 Company context: ${plan.company_context}
 Facts: ${JSON.stringify(plan.facts)}
 Debate: ${JSON.stringify(debate)}`
-    const editorRun = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: editorPrompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-    const edited = jsonFrom(editorRun.value.text || '')
-    const cited = strings(edited.cited_fact_ids, MAX_FACTS)
-    const allowed = new Set(plan.facts.map((fact) => fact.id))
-    if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
-    const views = new Set(['favorable', 'mixed', 'unfavorable', 'insufficient_evidence'])
-    const confidences = new Set(['low', 'medium', 'high'])
-    const directAnswer = String(edited.direct_answer || '').trim()
-    const distinctiveNow = String(edited.distinctive_now || '').trim()
-    if (!directAnswer || !distinctiveNow) throw new Error('editor response is incomplete')
-    const sources: DeepAnalysisSource[] = [...new Map(plan.facts.filter((fact) => cited.includes(fact.id)).map((fact) => [fact.source_url, { title: fact.source_title, url: fact.source_url, publishedAt: fact.published_at || null }])).values()].slice(0, MAX_SOURCES)
-    return {
-      symbol: signal.symbol, question, intent, status: 'complete',
-      view: views.has(String(edited.view)) ? edited.view as DeepAnalysisReport['view'] : 'mixed',
-      confidence: confidences.has(String(edited.confidence)) ? edited.confidence as DeepAnalysisReport['confidence'] : 'low',
-      directAnswer, distinctiveNow,
-      strongestEvidence: strings(edited.strongest_evidence),
-      strongestCounterargument: strings(edited.strongest_counterargument),
-      changeConditions: strings(edited.change_conditions), sources, model: editorRun.model,
-    }
+          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
+          const edited = jsonFrom(response.value.text || '')
+          const cited = strings(edited.cited_fact_ids, MAX_FACTS)
+          const allowed = new Set(plan.facts.map((fact) => fact.id))
+          if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
+          const views = new Set(['favorable', 'mixed', 'unfavorable', 'insufficient_evidence'])
+          const confidences = new Set(['low', 'medium', 'high'])
+          const directAnswer = String(edited.direct_answer || '').trim()
+          const distinctiveNow = String(edited.distinctive_now || '').trim()
+          if (!directAnswer || !distinctiveNow) throw new Error('editor response is incomplete')
+          const sources: DeepAnalysisSource[] = [...new Map(plan.facts.filter((fact) => cited.includes(fact.id)).map((fact) => [fact.source_url, { title: fact.source_title, url: fact.source_url, publishedAt: fact.published_at || null }])).values()].slice(0, MAX_SOURCES)
+          return {
+            symbol: signal.symbol, question, intent, status: 'complete' as const,
+            view: views.has(String(edited.view)) ? edited.view as DeepAnalysisReport['view'] : 'mixed',
+            confidence: confidences.has(String(edited.confidence)) ? edited.confidence as DeepAnalysisReport['confidence'] : 'low',
+            directAnswer, distinctiveNow,
+            strongestEvidence: strings(edited.strongest_evidence),
+            strongestCounterargument: strings(edited.strongest_counterargument),
+            changeConditions: strings(edited.change_conditions), sources, model: response.model,
+          }
+        },
+      },
+    ], checkpointStore)
+    return { ...(execution.state.synthesis as DeepAnalysisReport), stages: execution.stages }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
     console.warn('[deep-analysis]', JSON.stringify({ symbol: signal.symbol, models, message: message.slice(0, 220) }))
@@ -126,6 +159,6 @@ Debate: ${JSON.stringify(debate)}`
       : /json|unexpected token|incomplete|citation|sourced facts/i.test(message) ? 'validation'
       : /model|not found|unsupported/i.test(message) ? 'model'
       : 'provider'
-    return fallback(signal, question, intent, code)
+    return fallback(signal, question, intent, code, error instanceof CheckpointedStageError ? error.stages : undefined)
   }
 }

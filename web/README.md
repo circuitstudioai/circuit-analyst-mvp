@@ -22,6 +22,19 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
 
+## Analyst harness checkpoints
+
+Apply `supabase.sql` before deploying checkpointed analysis. Deep research is
+owned by a three-stage harness (`research`, `challenge`, `synthesis`) that saves
+each completed output in `analysis_stages`. A partial run can be resumed by its
+owner through the same analyze endpoint with `resumeRunId`; the server restores
+the original ticker and question, skips completed stages, and retries only the
+unfinished work without claiming new daily quota.
+
+The checkpoint boundary intentionally contains ordering, recovery, and storage
+policy. Gemini prompts remain domain workers inside that boundary, and the desk
+only consumes the resulting stage trace and final research outcome.
+
 ## Validation
 
 ```bash

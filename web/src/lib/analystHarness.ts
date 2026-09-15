@@ -6,6 +6,62 @@ export type AnalysisOutcome = {
   error?: string
 }
 
+export type StageRecord = {
+  status: 'running' | 'complete' | 'failed'
+  output?: unknown
+  error?: string
+}
+
+export type StageCheckpointStore = {
+  load: (name: string) => Promise<StageRecord | null>
+  save: (name: string, record: StageRecord) => Promise<void>
+}
+
+export type StageTrace = {
+  name: string
+  status: StageRecord['status']
+  resumed: boolean
+}
+
+export class CheckpointedStageError extends Error {
+  constructor(message: string, public readonly stages: StageTrace[], options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'CheckpointedStageError'
+  }
+}
+
+export async function runCheckpointedStages(
+  definitions: Array<{ name: string; run: (state: Record<string, unknown>) => Promise<unknown> }>,
+  store: StageCheckpointStore,
+) {
+  const state: Record<string, unknown> = {}
+  const stages: StageTrace[] = []
+
+  for (const definition of definitions) {
+    const checkpoint = await store.load(definition.name)
+    if (checkpoint?.status === 'complete' && checkpoint.output !== undefined) {
+      state[definition.name] = checkpoint.output
+      stages.push({ name: definition.name, status: 'complete', resumed: true })
+      continue
+    }
+
+    await store.save(definition.name, { status: 'running' })
+    try {
+      const output = await definition.run(state)
+      state[definition.name] = output
+      await store.save(definition.name, { status: 'complete', output })
+      stages.push({ name: definition.name, status: 'complete', resumed: false })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await store.save(definition.name, { status: 'failed', error: message })
+      stages.push({ name: definition.name, status: 'failed', resumed: false })
+      throw new CheckpointedStageError(message, stages, { cause: error })
+    }
+  }
+
+  return { state, stages }
+}
+
 function isTransient(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   return /429|quota|resource_exhausted|timeout|timed out|5\d\d|unavailable|network|fetch failed/i.test(message)

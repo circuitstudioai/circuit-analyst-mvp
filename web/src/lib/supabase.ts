@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { AnalyzeResponse, AnalysisIntent, DeepAnalysisReport } from './types'
 import { ConsensusResult, EngineOutput } from './consensus'
+import { StageCheckpointStore, StageRecord } from './analystHarness'
 
 export function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -61,6 +62,47 @@ export async function saveDeepReports(runId: number, question: string, intent: A
   const rows = reports.map((report) => ({ run_id: runId, ticker: report.symbol, question, intent, status: report.status, view: report.view, confidence: report.confidence, report }))
   const { error } = await sb.from('analysis_reports').upsert(rows, { onConflict: 'run_id,ticker' })
   return error ? { error: error.message } : { ok: true, inserted: rows.length }
+}
+
+export function analysisStageStore(runId: number, ticker: string): StageCheckpointStore {
+  const memory = new Map<string, StageRecord>()
+  return {
+    async load(name) {
+      const sb = serviceClient()
+      if (!sb) return memory.get(name) || null
+      const { data, error } = await sb.from('analysis_stages')
+        .select('status,output_payload,error_message')
+        .eq('run_id', runId).eq('ticker', ticker).eq('stage_name', name)
+        .maybeSingle()
+      if (error) throw new Error(`stage checkpoint read failed: ${error.message}`)
+      if (!data) return null
+      return {
+        status: data.status as StageRecord['status'],
+        output: data.output_payload ?? undefined,
+        error: data.error_message || undefined,
+      }
+    },
+    async save(name, record) {
+      const sb = serviceClient()
+      if (!sb) {
+        memory.set(name, record)
+        return
+      }
+      const now = new Date().toISOString()
+      const { error } = await sb.from('analysis_stages').upsert({
+        run_id: runId,
+        ticker,
+        stage_name: name,
+        status: record.status,
+        output_payload: record.output ?? null,
+        error_message: record.error || null,
+        started_at: record.status === 'running' ? now : undefined,
+        completed_at: record.status === 'complete' || record.status === 'failed' ? now : null,
+        updated_at: now,
+      }, { onConflict: 'run_id,ticker,stage_name' })
+      if (error) throw new Error(`stage checkpoint write failed: ${error.message}`)
+    },
+  }
 }
 
 export async function completeRun(
