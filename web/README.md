@@ -35,6 +35,18 @@ The checkpoint boundary intentionally contains ordering, recovery, and storage
 policy. Gemini prompts remain domain workers inside that boundary, and the desk
 only consumes the resulting stage trace and final research outcome.
 
+## Research conversations
+
+Authenticated analysis creates or continues an owned `research_thread` and
+stores role-labelled messages. The research harness receives only the latest
+bounded transcript, treats prior claims as context rather than evidence, and
+must re-verify new factual claims. The desk can reopen a thread, display its
+transcript, and submit natural follow-up questions while preserving the active
+ticker scope.
+
+`GET /api/conversations` lists the current user's threads. Supplying a
+`threadId` query parameter returns that owned thread's messages.
+
 ## Validation
 
 ```bash

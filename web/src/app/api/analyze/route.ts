@@ -7,6 +7,8 @@ import { analysisStageStore, completeRun, ingestEngineOutputs, saveConsensus, sa
 import { requireBetaUser } from '@/lib/betaAuth'
 import { analysisRunForResume, claimAnalysisQuota, createAnalysisRequest, finishAnalysisRequest, recordProductEvent } from '@/lib/betaData'
 import { deriveAnalysisOutcome } from '@/lib/analystHarness'
+import { appendResearchMessage, ensureResearchThread, researchMessages } from '@/lib/conversationData'
+import { buildConversationContext } from '@/lib/conversation'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 2
@@ -92,11 +94,19 @@ export async function POST(req: NextRequest) {
         }, { status: 429 })
       }
     }
+    const requestedThreadId = typeof body?.threadId === 'string' ? body.threadId : undefined
+    const threadId = await ensureResearchThread(auth.user.id, requestedThreadId, watchlist, question)
+    if (requestedThreadId && !threadId) {
+      return NextResponse.json({ error: 'Research conversation not found.' }, { status: 404 })
+    }
     requestId = await createAnalysisRequest(auth.user.id, watchlist)
+    const priorMessages = threadId ? await researchMessages(auth.user.id, threadId, 12) : []
+    const conversationContext = buildConversationContext(priorMessages, 8)
+    if (threadId && !resumeRunId) await appendResearchMessage(auth.user.id, threadId, { role: 'user', content: question })
 
-    const cacheKey = `${watchlist.join(',')}|${intent}|${question.toLowerCase()}`
+    const cacheKey = `${auth.user.id}|${threadId || 'none'}|${watchlist.join(',')}|${intent}|${question.toLowerCase()}`
     const cached = responseCache.get(cacheKey)
-    if (!resumeRunId && cached && cached.expires > Date.now()) {
+    if (!resumeRunId && !threadId && cached && cached.expires > Date.now()) {
       const cachedRunId = Number((cached.payload as { saved?: { runId?: number } }).saved?.runId) || undefined
       const cachedOutcome = (cached.payload as { outcome?: ReturnType<typeof deriveAnalysisOutcome> }).outcome
       await finishAnalysisRequest(requestId, { runId: cachedRunId, status: cachedOutcome?.status === 'completed' ? 'cached' : 'partial', durationMs: Date.now() - startedAt, error: cachedOutcome?.error })
@@ -129,7 +139,7 @@ export async function POST(req: NextRequest) {
         question,
         intent,
         engineOutputs.filter((row) => row.ticker === signal.symbol),
-        analysisStageStore(saved.runId!, signal.symbol),
+        { checkpointStore: analysisStageStore(saved.runId!, signal.symbol), conversationContext },
       )))
       draft.signals = draft.signals.map((signal) => ({ ...signal, deepAnalysis: reports.find((report) => report.symbol === signal.symbol) }))
       const reportWrite = await saveDeepReports(saved.runId, question, intent, reports)
@@ -161,7 +171,7 @@ export async function POST(req: NextRequest) {
           ? `Supabase save failed: ${saved.error}`
           : 'Supabase env absent; analysis remains live but not stored',
     }
-    const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], ...pipelineResult }
+    const payload = { ...draft, pipeline: [...draft.pipeline, persistenceStep], ...pipelineResult, conversationId: threadId }
 
     responseCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, payload })
     const outcome = (pipelineResult.outcome || {
@@ -179,6 +189,10 @@ export async function POST(req: NextRequest) {
       runId: saved.runId,
       properties: { symbolCount: watchlist.length, cached: false, resumed: Boolean(resumeRunId), persisted: Boolean(saved.ok), outcome: outcome.status, researchStatus: outcome.researchStatus },
     })
+    if (threadId) {
+      const answer = draft.signals.map((signal) => signal.deepAnalysis?.directAnswer || signal.thesis).join('\n\n')
+      await appendResearchMessage(auth.user.id, threadId, { role: 'assistant', content: answer, runId: saved.runId })
+    }
     return NextResponse.json(payload)
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Analyze failed'

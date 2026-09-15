@@ -84,7 +84,7 @@ export async function generateDeepAnalysis(
   question: string,
   intent: AnalysisIntent,
   engines: EngineOutput[],
-  checkpointStore: StageCheckpointStore = memoryStageStore(),
+  options: { checkpointStore?: StageCheckpointStore; conversationContext?: string } = {},
 ): Promise<DeepAnalysisReport> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return fallback(signal, question, intent, 'not_configured')
@@ -94,9 +94,13 @@ export async function generateDeepAnalysis(
   const primaryModel = process.env.GEMINI_DEEP_MODEL || 'gemini-3.6-flash'
   const models = [...new Set([primaryModel, process.env.GEMINI_FALLBACK_MODEL].filter(Boolean) as string[])]
   const ai = new GoogleGenAI({ apiKey })
+  const checkpointStore = options.checkpointStore || memoryStageStore()
+  const priorConversation = options.conversationContext
+    ? `\nPrior conversation (context only; verify its factual claims again):\n${options.conversationContext}`
+    : ''
   try {
     const researchPrompt = `Act as a research planner for ${signal.symbol}. The user asks: ${JSON.stringify(question)}. Intent: ${intent}.
-Find current, company-specific evidence. Prefer SEC filings and company investor-relations sources; use reputable reporting only for material events not in primary sources. Return JSON only with company_context, questions_to_answer (array), and facts (array). Each fact requires id, statement, source_url, source_title, and published_at. Include business model, latest results/guidance, cash flow or margins, sector-appropriate valuation context, company-specific risk, and catalyst when relevant. Maximum ${MAX_FACTS} facts. Do not recommend a trade.`
+Find current, company-specific evidence. Prefer SEC filings and company investor-relations sources; use reputable reporting only for material events not in primary sources. Return JSON only with company_context, questions_to_answer (array), and facts (array). Each fact requires id, statement, source_url, source_title, and published_at. Include business model, latest results/guidance, cash flow or margins, sector-appropriate valuation context, company-specific risk, and catalyst when relevant. Maximum ${MAX_FACTS} facts. Do not recommend a trade.${priorConversation}`
     const engineContext = engines.map((row) => ({ engine: row.engine_name, direction: row.direction, confidence: row.confidence, thesis: row.thesis_summary, risks: row.risk_flags })).slice(0, 4)
     const execution = await runCheckpointedStages([
       {
