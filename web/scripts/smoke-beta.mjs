@@ -86,7 +86,15 @@ try {
   })
   const analysis = firstJob.result
   if (!analysis?.saved?.runId || !analysis?.conversationId || !analysis?.signals?.[0]?.deepAnalysis?.sources?.length) {
-    throw new Error('Background analysis did not return a persisted, cited answer')
+    throw new Error(`Background analysis did not return a persisted, cited answer: ${JSON.stringify({
+      jobStatus: firstJob.progress?.status,
+      jobError: firstJob.error,
+      runId: analysis?.saved?.runId || null,
+      conversationId: analysis?.conversationId || null,
+      reportStatus: analysis?.signals?.[0]?.deepAnalysis?.status || null,
+      reportErrorCode: analysis?.signals?.[0]?.deepAnalysis?.errorCode || null,
+      sourceCount: analysis?.signals?.[0]?.deepAnalysis?.sources?.length || 0,
+    })}`)
   }
 
   const followUpJob = await runBackgroundAnalysis(headers, {

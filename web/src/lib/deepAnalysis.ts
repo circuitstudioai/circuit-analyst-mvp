@@ -7,7 +7,7 @@ type ResearchFact = { id: string; statement: string; source_url: string; source_
 type ResearchPlan = { company_context: string; questions_to_answer: string[]; facts: ResearchFact[] }
 type Debate = { positive_case: string[]; challenge_case: string[]; change_conditions: string[]; cited_fact_ids: string[] }
 
-const MAX_FACTS = 14
+const MAX_FACTS = 10
 const MAX_SOURCES = 8
 
 export function classifyIntent(question: string, symbolCount: number): AnalysisIntent {
@@ -114,7 +114,7 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
         name: 'research',
         run: async () => {
           const response = await executeWithFallback(models, 2, async (model) => {
-            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], responseMimeType: 'application/json', maxOutputTokens: 4000, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], responseMimeType: 'application/json', maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
             return validatedModelOutput(generated.text || '', validatePlan)
           })
           return { plan: response.value, model: response.model, attempts: response.attempts }
