@@ -69,9 +69,17 @@ by the authenticated user that started it.
 ## Validation
 
 ```bash
+npm run eval:finance
 npm run build
 npm run lint
 ```
+
+`npm run eval:finance` runs the versioned finance-domain acceptance set in
+`src/evals/finance-domain.v1.json`. The deterministic scorer rejects technical
+fallbacks, wrong intent or scope, weak sourcing, one-sided answers, missing
+change conditions, direct trade instructions, and uncalibrated certainty. New
+model or prompt versions should pass this gate before replacing the production
+research path.
 
 ## Two-week beta validation layer
 

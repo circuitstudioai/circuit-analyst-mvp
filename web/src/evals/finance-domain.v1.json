@@ -1,0 +1,15 @@
+{
+  "name": "circuit-finance-domain",
+  "version": "1.0.0",
+  "description": "Deterministic acceptance cases for the Circuit analyst's intent routing and answer-quality contract.",
+  "cases": [
+    { "id": "semiconductor-overview", "symbol": "NVDA", "question": "What does the evidence say about Nvidia now?", "symbolCount": 1, "expectedIntent": "overview", "minSources": 2 },
+    { "id": "bank-risk", "symbol": "JPM", "question": "What are the biggest company-specific risks for JPMorgan?", "symbolCount": 1, "expectedIntent": "risk", "minSources": 2 },
+    { "id": "saas-valuation", "symbol": "CRM", "question": "Is Salesforce valuation expensive relative to its fundamentals?", "symbolCount": 1, "expectedIntent": "valuation", "minSources": 2 },
+    { "id": "retail-earnings", "symbol": "COST", "question": "What mattered in Costco's latest earnings and guidance?", "symbolCount": 1, "expectedIntent": "earnings", "minSources": 2 },
+    { "id": "automaker-change", "symbol": "TSLA", "question": "What changed in the Tesla thesis since our last review?", "symbolCount": 1, "expectedIntent": "change", "minSources": 2 },
+    { "id": "chipmaker-comparison", "symbol": "NVDA", "question": "Compare Nvidia versus AMD on the evidence, not hype.", "symbolCount": 2, "expectedIntent": "comparison", "minSources": 2 },
+    { "id": "biotech-risk", "symbol": "MRNA", "question": "What could go wrong with Moderna's current pipeline thesis?", "symbolCount": 1, "expectedIntent": "risk", "minSources": 2 },
+    { "id": "etf-comparison", "symbol": "QQQ", "question": "How does QQQ compare with SPY for concentration risk?", "symbolCount": 2, "expectedIntent": "comparison", "minSources": 2 }
+  ]
+}
