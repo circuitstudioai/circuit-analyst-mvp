@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel, type GenerateContentConfig } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { AnalysisIntent, DeepAnalysisReport, DeepAnalysisSource, SignalRow } from './types'
 import { CheckpointedStageError, executeWithFallback, ModelOutputError, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
@@ -9,6 +9,33 @@ type Debate = { positive_case: string[]; challenge_case: string[]; change_condit
 
 const MAX_FACTS = 10
 const MAX_SOURCES = 8
+
+export const researchGenerationConfig = {
+  tools: [{ googleSearch: {} }],
+  responseMimeType: 'application/json',
+  responseJsonSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['company_context', 'questions_to_answer', 'facts'],
+    properties: {
+      company_context: { type: 'string' },
+      questions_to_answer: { type: 'array', maxItems: 6, items: { type: 'string' } },
+      facts: {
+        type: 'array', minItems: 3, maxItems: MAX_FACTS,
+        items: {
+          type: 'object', additionalProperties: false,
+          required: ['id', 'statement', 'source_url', 'source_title'],
+          properties: {
+            id: { type: 'string' }, statement: { type: 'string' }, source_url: { type: 'string' },
+            source_title: { type: 'string' }, published_at: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  maxOutputTokens: 8192,
+  thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+} satisfies GenerateContentConfig
 
 export function classifyIntent(question: string, symbolCount: number): AnalysisIntent {
   const q = question.toLowerCase()
@@ -114,7 +141,7 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
         name: 'research',
         run: async () => {
           const response = await executeWithFallback(models, 2, async (model) => {
-            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], responseMimeType: 'application/json', maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } })
+            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: researchGenerationConfig })
             return validatedModelOutput(generated.text || '', validatePlan)
           })
           return { plan: response.value, model: response.model, attempts: response.attempts }
