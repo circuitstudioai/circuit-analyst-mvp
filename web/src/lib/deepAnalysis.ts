@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { AnalysisIntent, DeepAnalysisReport, DeepAnalysisSource, SignalRow } from './types'
-import { CheckpointedStageError, executeWithFallback, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
+import { CheckpointedStageError, executeWithFallback, ModelOutputError, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
 
 type ResearchFact = { id: string; statement: string; source_url: string; source_title: string; published_at?: string }
 type ResearchPlan = { company_context: string; questions_to_answer: string[]; facts: ResearchFact[] }
@@ -23,6 +23,13 @@ export function classifyIntent(question: string, symbolCount: number): AnalysisI
 function jsonFrom(text: string) {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   return JSON.parse(cleaned) as Record<string, unknown>
+}
+
+function validatedModelOutput<T>(text: string, validate: (value: Record<string, unknown>) => T) {
+  try { return validate(jsonFrom(text)) }
+  catch (error) {
+    throw new ModelOutputError(error instanceof Error ? error.message : 'Model output validation failed', { cause: error })
+  }
 }
 
 function strings(value: unknown, max = 4) {
@@ -106,8 +113,11 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
       {
         name: 'research',
         run: async () => {
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          return { plan: validatePlan(jsonFrom(response.value.text || '')), model: response.model, attempts: response.attempts }
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], responseMimeType: 'application/json', maxOutputTokens: 4000, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            return validatedModelOutput(generated.text || '', validatePlan)
+          })
+          return { plan: response.value, model: response.model, attempts: response.attempts }
         },
       },
       {
@@ -118,8 +128,11 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
 Question: ${question}
 Facts: ${JSON.stringify(plan.facts)}
 Engine context: ${JSON.stringify(engineContext)}`
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          return { debate: validateDebate(jsonFrom(response.value.text || ''), new Set(plan.facts.map((fact) => fact.id))), model: response.model, attempts: response.attempts }
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            return validatedModelOutput(generated.text || '', (value) => validateDebate(value, new Set(plan.facts.map((fact) => fact.id))))
+          })
+          return { debate: response.value, model: response.model, attempts: response.attempts }
         },
       },
       {
@@ -132,8 +145,11 @@ Question: ${question}
 Company context: ${plan.company_context}
 Facts: ${JSON.stringify(plan.facts)}
 Debate: ${JSON.stringify(debate)}`
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          const edited = jsonFrom(response.value.text || '')
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 3000, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            return validatedModelOutput(generated.text || '', (value) => value)
+          })
+          const edited = response.value
           const cited = strings(edited.cited_fact_ids, MAX_FACTS)
           const allowed = new Set(plan.facts.map((fact) => fact.id))
           if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
