@@ -9,6 +9,13 @@ type Debate = { positive_case: string[]; challenge_case: string[]; change_condit
 
 const MAX_FACTS = 10
 const MAX_SOURCES = 8
+const UNCERTAINTY_LANGUAGE = /\b(may|might|could|uncertain|depends|if|risk|evidence|appears|suggests)\b/i
+
+export function calibratedConfidence(value: unknown, answerText: string): DeepAnalysisReport['confidence'] {
+  const confidence = String(value)
+  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return 'low'
+  return confidence === 'high' && !UNCERTAINTY_LANGUAGE.test(answerText) ? 'medium' : confidence
+}
 
 export const researchGenerationConfig = {
   tools: [{ googleSearch: {} }],
@@ -181,7 +188,6 @@ Debate: ${JSON.stringify(debate)}`
           const allowed = new Set(plan.facts.map((fact) => fact.id))
           if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
           const views = new Set(['favorable', 'mixed', 'unfavorable', 'insufficient_evidence'])
-          const confidences = new Set(['low', 'medium', 'high'])
           const directAnswer = String(edited.direct_answer || '').trim()
           const distinctiveNow = String(edited.distinctive_now || '').trim()
           if (!directAnswer || !distinctiveNow) throw new Error('editor response is incomplete')
@@ -189,7 +195,7 @@ Debate: ${JSON.stringify(debate)}`
           return {
             symbol: signal.symbol, question, intent, status: 'complete' as const,
             view: views.has(String(edited.view)) ? edited.view as DeepAnalysisReport['view'] : 'mixed',
-            confidence: confidences.has(String(edited.confidence)) ? edited.confidence as DeepAnalysisReport['confidence'] : 'low',
+            confidence: calibratedConfidence(edited.confidence, `${directAnswer} ${distinctiveNow}`),
             directAnswer, distinctiveNow,
             strongestEvidence: strings(edited.strongest_evidence),
             strongestCounterargument: strings(edited.strongest_counterargument),

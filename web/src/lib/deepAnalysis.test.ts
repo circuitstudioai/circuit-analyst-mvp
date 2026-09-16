@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyIntent, researchGenerationConfig } from './deepAnalysis'
+import { calibratedConfidence, classifyIntent, researchGenerationConfig } from './deepAnalysis'
 
 describe('deep analysis intent classifier', () => {
   it('detects question-specific intents', () => {
@@ -22,5 +22,11 @@ describe('deep analysis intent classifier', () => {
         facts: { minItems: 3, maxItems: 10 },
       },
     })
+  })
+
+  it('does not preserve high confidence without explicit uncertainty language', () => {
+    expect(calibratedConfidence('high', 'Revenue grew quickly and margins expanded.')).toBe('medium')
+    expect(calibratedConfidence('high', 'Evidence suggests growth may continue, but execution risk remains.')).toBe('high')
+    expect(calibratedConfidence('low', 'Revenue grew quickly.')).toBe('low')
   })
 })
