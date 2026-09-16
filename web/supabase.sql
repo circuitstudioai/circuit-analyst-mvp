@@ -153,6 +153,21 @@ create table if not exists research_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists analysis_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  run_id bigint references analysis_runs(id) on delete set null,
+  status text not null default 'queued' check (status in ('queued','running','completed','partial','failed')),
+  current_stage text not null default 'queued',
+  request_payload jsonb not null default '{}'::jsonb,
+  result_payload jsonb,
+  error_message text,
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_signals_run_id on signals(run_id);
 create index if not exists idx_engine_outputs_ticker_ts on engine_outputs(ticker, run_timestamp desc);
 create index if not exists idx_engine_outputs_engine on engine_outputs(engine_name);
@@ -164,3 +179,4 @@ create index if not exists idx_provider_usage_created on provider_usage(created_
 create index if not exists idx_analysis_stages_run on analysis_stages(run_id, ticker);
 create index if not exists idx_research_threads_user on research_threads(user_id, updated_at desc);
 create index if not exists idx_research_messages_thread on research_messages(thread_id, created_at);
+create index if not exists idx_analysis_jobs_user_created on analysis_jobs(user_id, created_at desc);

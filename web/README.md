@@ -47,6 +47,19 @@ ticker scope.
 `GET /api/conversations` lists the current user's threads. Supplying a
 `threadId` query parameter returns that owned thread's messages.
 
+## Background analysis progress
+
+The desk queues authenticated research through `POST /api/analysis-jobs` and
+polls `GET /api/analysis-jobs?id=...`. The initial response is immediate; the
+job then exposes its real market-data, evidence, research, challenge,
+synthesis, and verification state from durable database checkpoints. Terminal
+jobs retain the full result payload so refreshing the progress request does not
+rerun research or consume quota again.
+
+The route uses Next.js `after` with a five-minute `maxDuration`. Apply the latest
+Supabase migration before deployment so queued work can be owned and read only
+by the authenticated user that started it.
+
 ## Validation
 
 ```bash

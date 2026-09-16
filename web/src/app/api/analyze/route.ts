@@ -9,6 +9,7 @@ import { analysisRunForResume, claimAnalysisQuota, createAnalysisRequest, finish
 import { deriveAnalysisOutcome } from '@/lib/analystHarness'
 import { appendResearchMessage, ensureResearchThread, researchMessages } from '@/lib/conversationData'
 import { buildConversationContext } from '@/lib/conversation'
+import { analysisJobForUser, updateAnalysisJob } from '@/lib/analysisJobs'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
 const MAX_SYMBOLS = 2
@@ -69,6 +70,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}))
+    const jobId = typeof body?.jobId === 'string' ? body.jobId : undefined
+    if (jobId && !await analysisJobForUser(auth.user.id, jobId)) {
+      return NextResponse.json({ error: 'Analysis job not found.' }, { status: 404 })
+    }
     let watchlist = normalizeWatchlist(body?.watchlist)
     if (!watchlist.length) {
       return NextResponse.json({ error: 'Enter at least one valid ticker.' }, { status: 400 })
@@ -117,10 +122,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ...(cached.payload as object), cached: true })
     }
 
+    if (jobId) await updateAnalysisJob(jobId, auth.user.id, { status: 'running', currentStage: 'market_data' })
     const base = await analyzeWatchlist(watchlist)
     const draft = { ...base, question, intent }
 
     const saved = resumeRunId ? { ok: true as const, runId: resumeRunId } : await saveRun(draft)
+    if (jobId) await updateAnalysisJob(jobId, auth.user.id, {
+      currentStage: 'evidence', runId: saved.ok ? saved.runId : undefined,
+    })
     let pipelineResult: Record<string, unknown> = { saved }
 
     if (saved.ok && saved.runId) {
@@ -134,6 +143,7 @@ export async function POST(req: NextRequest) {
         .map((rows) => computeConsensus(rows))
         .filter((row) => row !== null)
       const consensusWrites = await Promise.all(consensus.map((row) => saveConsensus(row)))
+      if (jobId) await updateAnalysisJob(jobId, auth.user.id, { currentStage: 'research' })
       const reports = await Promise.all(draft.signals.map((signal) => generateDeepAnalysis(
         signal,
         question,
@@ -159,6 +169,7 @@ export async function POST(req: NextRequest) {
         ...('error' in usageWrite && usageWrite.error ? [usageWrite.error] : []),
       ]
       const outcome = deriveAnalysisOutcome(reports.map((report) => report.status), writeErrors)
+      if (jobId) await updateAnalysisJob(jobId, auth.user.id, { currentStage: 'verification' })
       const completion = await completeRun(saved.runId, outcome.status, outcome.error)
       pipelineResult = { saved, ingested, consensus, reports: { completed: completedReports, fallback: reports.length - completedReports }, outcome, completion }
     }

@@ -31,6 +31,7 @@ type FollowUp = 'summary' | 'simple' | 'risks' | 'valuation' | 'evidence' | 'cha
 
 type ResearchThread = { id: string; title: string; symbols: string[]; updated_at: string }
 type ResearchMessage = { id: number; role: 'user' | 'assistant'; content: string; runId?: number | null; createdAt?: string }
+type JobProgress = { status: string; currentStage: string; completedStages: string[]; percent: number; terminal: boolean }
 
 const followUps: Array<{ id: FollowUp; label: string }> = [
   { id: 'simple', label: 'Explain this simply' },
@@ -111,6 +112,7 @@ export default function HomePage() {
   const [threads, setThreads] = useState<ResearchThread[]>([])
   const [messages, setMessages] = useState<ResearchMessage[]>([])
   const [followUpQuestion, setFollowUpQuestion] = useState('')
+  const [jobProgress, setJobProgress] = useState<JobProgress | null>(null)
   const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
@@ -258,15 +260,31 @@ export default function HomePage() {
       return
     }
     setLoading(true)
+    setJobProgress({ status: 'queued', currentStage: 'queued', completedStages: [], percent: 0, terminal: false })
     setError('')
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await fetch('/api/analysis-jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ watchlist: symbols, question: askedQuestion, resumeRunId, threadId: conversationId }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Analyze failed')
+      const queued = await res.json()
+      if (!res.ok) throw new Error(queued?.error || 'Analyze failed')
+      let data: AnalyzeResponse | null = null
+      for (let attempt = 0; attempt < 360; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000))
+        const poll = await fetch(`/api/analysis-jobs?id=${encodeURIComponent(queued.jobId)}`, {
+          cache: 'no-store', headers: { authorization: `Bearer ${accessToken}` },
+        })
+        const snapshot = await poll.json()
+        if (!poll.ok) throw new Error(snapshot?.error || 'Could not read analysis progress')
+        setJobProgress(snapshot.job.progress)
+        if (!snapshot.job.progress.terminal) continue
+        if (snapshot.job.progress.status === 'failed') throw new Error(snapshot.job.error || 'Analyze failed')
+        data = snapshot.job.result as AnalyzeResponse
+        break
+      }
+      if (!data) throw new Error('Analysis timed out. You can safely try again.')
       setResult(data)
       setQuestion(askedQuestion)
       if (data.conversationId) setConversationId(data.conversationId)
@@ -485,7 +503,7 @@ export default function HomePage() {
             {messages.map((message) => <div key={message.id} className={message.role === 'user' ? styles.userMessage : styles.analystMessage}><span>{message.role === 'user' ? 'You' : 'Circuit'}</span><p>{message.content}</p></div>)}
           </div>
         )}
-        <ResearchJourney loading={loading} result={result} />
+        <ResearchJourney loading={loading} result={result} progress={jobProgress} />
         {!activeSignal ? (
           <div className={styles.welcomeMessage}>
             <span className={styles.assistantMark}>C</span>
@@ -831,22 +849,19 @@ function PipelineItem({ step }: { step: PipelineStep }) {
   )
 }
 
-function ResearchJourney({ loading, result }: { loading: boolean; result: AnalyzeResponse | null }) {
-  const [active, setActive] = useState(0)
+function ResearchJourney({ loading, result, progress }: { loading: boolean; result: AnalyzeResponse | null; progress: JobProgress | null }) {
   const stages = [
     ['Market reader', 'Gathering current price history', null],
     ['Evidence analyst', 'Checking research and company context', 'research'],
     ['Risk reviewer', 'Testing what could weaken the case', 'challenge'],
     ['Decision editor', 'Reconciling the evidence in plain English', 'synthesis'],
   ] as const
-  useEffect(() => {
-    if (!loading) return
-    const reset = window.setTimeout(() => setActive(1), 0)
-    const timer = window.setInterval(() => setActive((value) => Math.min(value + 1, stages.length - 1)), 1100)
-    return () => { window.clearTimeout(reset); window.clearInterval(timer) }
-  }, [loading, result, stages.length])
   if (!loading && !result) return null
-  const displayedActive = !loading && result ? stages.length : active
+  const progressIndex = progress?.currentStage === 'market_data' ? 0
+    : progress?.currentStage === 'evidence' || progress?.currentStage === 'research' ? 1
+      : progress?.currentStage === 'challenge' ? 2
+        : progress?.currentStage === 'synthesis' || progress?.currentStage === 'verification' ? 3 : 0
+  const displayedActive = !loading && result ? stages.length : progressIndex
   const researchComplete = result?.outcome?.researchStatus === 'complete'
   const actualDetail = (name: string, fallback: string) => {
     const label = name === 'Market reader' ? 'Public price fetch' : name === 'Evidence analyst' ? 'Research evidence' : name === 'Decision editor' ? 'AI summary' : 'Rule scoring'
@@ -854,7 +869,7 @@ function ResearchJourney({ loading, result }: { loading: boolean; result: Analyz
   }
   return (
     <section className={styles.journey} aria-label="Research progress">
-      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{Math.max(displayedActive, 1)}/{stages.length}</span></div>
+      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{loading && progress ? `${progress.percent}%` : `${Math.max(displayedActive, 1)}/${stages.length}`}</span></div>
       <ol>
         {stages.map(([name, detail, checkpointName], index) => {
           const checkpoint = checkpointName ? result?.signals[0]?.deepAnalysis?.stages?.find((stage) => stage.name === checkpointName) : undefined
