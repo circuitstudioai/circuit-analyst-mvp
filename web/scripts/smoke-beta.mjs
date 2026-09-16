@@ -26,6 +26,22 @@ async function api(path, options = {}) {
   return { status: response.status, body }
 }
 
+async function runBackgroundAnalysis(headers, payload) {
+  const queued = await api('/api/analysis-jobs', {
+    method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(payload),
+  })
+  if (queued.status !== 202 || !queued.body?.jobId) throw new Error(`Background analysis queue failed (${queued.status})`)
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const snapshot = await api(`/api/analysis-jobs?id=${encodeURIComponent(queued.body.jobId)}`, { headers })
+    if (snapshot.status !== 200) throw new Error(`Background analysis poll failed (${snapshot.status})`)
+    if (!snapshot.body?.job?.progress?.terminal) continue
+    if (snapshot.body.job.progress.status === 'failed') throw new Error(snapshot.body.job.error || 'Background analysis failed')
+    return snapshot.body.job
+  }
+  throw new Error('Background analysis timed out')
+}
+
 try {
   const universe = await api('/api/universe')
   if (universe.status !== 200 || universe.body?.symbols?.length !== 100) throw new Error('Universe smoke failed')
@@ -38,6 +54,8 @@ try {
   const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
   if (createError || !created.user) throw new Error(createError?.message || 'Test user creation failed')
   userId = created.user.id
+  const { error: roleError } = await admin.from('profiles').update({ beta_role: 'admin' }).eq('id', userId)
+  if (roleError) throw new Error(roleError.message)
 
   const { data: signedIn, error: signInError } = await publicClient.auth.signInWithPassword({ email, password })
   if (signInError || !signedIn.session) throw new Error(signInError?.message || 'Test sign-in failed')
@@ -63,24 +81,33 @@ try {
   })
   if (savedWatchlist.status !== 200) throw new Error('Watchlist update smoke failed')
 
-  const analysis = await api('/api/analyze', {
-    method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ watchlist: [smokeSymbol] }),
+  const firstJob = await runBackgroundAnalysis(headers, {
+    watchlist: [smokeSymbol], question: `What does the evidence say about ${smokeSymbol} now?`,
   })
-  if (analysis.status !== 200 || !analysis.body?.saved?.runId) {
-    throw new Error(`Analysis smoke failed (${analysis.status}): ${JSON.stringify(analysis.body?.saved || null)}`)
+  const analysis = firstJob.result
+  if (!analysis?.saved?.runId || !analysis?.conversationId || !analysis?.signals?.[0]?.deepAnalysis?.sources?.length) {
+    throw new Error('Background analysis did not return a persisted, cited answer')
   }
+
+  const followUpJob = await runBackgroundAnalysis(headers, {
+    watchlist: [smokeSymbol], question: 'What evidence would most clearly change that view?', threadId: analysis.conversationId,
+  })
+  if (followUpJob.result?.conversationId !== analysis.conversationId) throw new Error('Follow-up did not continue the conversation')
+
+  const conversation = await api(`/api/conversations?threadId=${encodeURIComponent(analysis.conversationId)}`, { headers })
+  if (conversation.status !== 200 || conversation.body?.messages?.length < 4) throw new Error('Conversation reload smoke failed')
 
   const reportOpened = await api('/api/events', {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ eventName: 'report_opened', runId: analysis.body.saved.runId, properties: { smoke: true } }),
+    body: JSON.stringify({ eventName: 'report_opened', runId: analysis.saved.runId, properties: { smoke: true } }),
   })
   if (reportOpened.status !== 200) throw new Error('Product event smoke failed')
 
   const feedback = await api('/api/feedback', {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ runId: analysis.body.saved.runId, symbol: smokeSymbol, helpful: true, reason: 'actionable' }),
+    body: JSON.stringify({ runId: analysis.saved.runId, symbol: smokeSymbol, helpful: true, reason: 'actionable' }),
   })
   if (feedback.status !== 200) throw new Error('Feedback smoke failed')
 
@@ -93,7 +120,11 @@ try {
     unauthorized_status: unauthorized.status,
     default_watchlist: me.body.watchlist,
     saved_watchlist: savedWatchlist.body.watchlist,
-    analysis_run: analysis.body.saved.runId,
+    analysis_run: analysis.saved.runId,
+    background_job: firstJob.id,
+    cited_sources: analysis.signals[0].deepAnalysis.sources.length,
+    follow_up_job: followUpJob.id,
+    reloaded_messages: conversation.body.messages.length,
     onboarding: true,
     product_event: reportOpened.body.ok,
     feedback: feedback.body.ok,

@@ -103,7 +103,8 @@ export async function completeOnboarding(userId: string, input: OnboardingInput)
   if (error) throw new Error(error.message)
 
   const { data: cohort } = await supabase.from('beta_cohorts')
-    .select('id').in('status', ['recruiting', 'active']).order('starts_on').limit(1).maybeSingle()
+    .select('id').in('status', ['recruiting', 'active']).gte('ends_on', completedAt.slice(0, 10))
+    .order('starts_on', { ascending: false }).limit(1).maybeSingle()
   if (cohort) {
     await supabase.from('beta_cohort_members').upsert(
       { cohort_id: cohort.id, user_id: userId },
