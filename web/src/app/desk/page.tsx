@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from '../page.module.css'
 import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from '../BetaAccess'
+import { evidenceWorkspace } from '@/lib/analystWorkspace'
 
 const samples = [
   ['NVDA'],
@@ -175,6 +176,7 @@ export default function HomePage() {
 
   const visibleRuns = accessToken ? recentRuns : []
   const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
+  const evidencePanel = activeSignal ? evidenceWorkspace(activeSignal) : null
   const resumableRunId = result?.outcome?.researchStatus !== 'complete' ? result?.saved?.runId : undefined
 
   async function fetchRecentRuns() {
@@ -484,20 +486,35 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className={styles.conversation} aria-live="polite">
-        {accessToken && (
-          <div className={styles.threadBar}>
-            <div><span>Your research conversations</span><strong>{conversationId ? 'Continuing with context' : 'New conversation'}</strong></div>
-            <select value={conversationId || ''} onChange={(event) => {
-              const thread = threads.find((item) => item.id === event.target.value)
-              if (thread) void openConversation(thread)
-            }} aria-label="Open a research conversation">
-              <option value="" disabled>Select a previous conversation</option>
-              {threads.map((thread) => <option key={thread.id} value={thread.id}>{thread.title}</option>)}
-            </select>
-            <button type="button" onClick={newConversation}>New conversation</button>
+      <section className={styles.workspaceShell}>
+        <aside className={styles.conversationRail} aria-label="Research conversations">
+          <div className={styles.railHeading}>
+            <div><p className={styles.kicker}>Research desk</p><strong>Conversations</strong></div>
+            <button type="button" onClick={newConversation} disabled={!accessToken} aria-label="Start a new conversation">+</button>
           </div>
-        )}
+          <p className={styles.railIntro}>Each thread keeps its question, companies, and verified research context together.</p>
+          <nav className={styles.threadList} aria-label="Saved research conversations">
+            {threads.length ? threads.map((thread) => (
+              <button
+                key={thread.id}
+                type="button"
+                className={thread.id === conversationId ? styles.activeThread : undefined}
+                onClick={() => void openConversation(thread)}
+              >
+                <span>{thread.symbols.join(' · ') || 'Research'}</span>
+                <strong>{thread.title}</strong>
+                <small>{new Date(thread.updated_at).toLocaleDateString()}</small>
+              </button>
+            )) : <div className={styles.emptyRail}><strong>No saved threads yet</strong><span>Your first question starts one.</span></div>}
+          </nav>
+          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Analyst connected' : 'Sign in to begin'}</span></div>
+        </aside>
+
+        <section className={styles.conversation} aria-live="polite">
+        <div className={styles.conversationHeader}>
+          <div><span>{conversationId ? 'Continuing research' : 'New research thread'}</span><strong>{activeSignal ? `${activeSignal.symbol} analyst room` : 'Ask Circuit'}</strong></div>
+          {result?.asOf && <time dateTime={result.asOf}>Updated {new Date(result.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>}
+        </div>
         {messages.length > 0 && (
           <div className={styles.transcript} aria-label="Conversation history">
             {messages.map((message) => <div key={message.id} className={message.role === 'user' ? styles.userMessage : styles.analystMessage}><span>{message.role === 'user' ? 'You' : 'Circuit'}</span><p>{message.content}</p></div>)}
@@ -584,6 +601,48 @@ export default function HomePage() {
             </article>
           </>
         )}
+        </section>
+
+        <aside className={styles.evidenceRail} aria-label="Contextual evidence workspace">
+          <div className={styles.railHeading}>
+            <div><p className={styles.kicker}>Live context</p><strong>Evidence</strong></div>
+            {evidencePanel && <span className={styles.evidenceTicker}>{evidencePanel.symbol}</span>}
+          </div>
+          {evidencePanel && activeSignal ? (
+            <>
+              <div className={styles.evidenceVitals}>
+                <div><span>Mode</span><strong>{evidencePanel.researchMode}</strong></div>
+                <div><span>Confidence</span><strong>{evidencePanel.confidence}</strong></div>
+                <div><span>Freshness</span><strong>{evidencePanel.freshness}</strong></div>
+              </div>
+              <PriceJourney signal={activeSignal} compact />
+              <section className={styles.railSection}>
+                <div className={styles.railSectionTitle}><strong>Source file</strong><span>{evidencePanel.sourceCount}</span></div>
+                {evidencePanel.sources.length ? evidencePanel.sources.slice(0, 5).map((source, index) => (
+                  <a key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
+                    <i>{String(index + 1).padStart(2, '0')}</i><span><strong>{source.title}</strong><small>{source.publishedAt}</small></span>
+                  </a>
+                )) : <p className={styles.railEmpty}>No external sources are attached to this technical snapshot.</p>}
+              </section>
+              <section className={styles.railSection}>
+                <div className={styles.railSectionTitle}><strong>Evidence signals</strong><span>{evidencePanel.evidence.length}</span></div>
+                {evidencePanel.evidence.slice(0, 4).map((item) => (
+                  <button key={`${item.label}-${item.detail}`} type="button" onClick={() => setFollowUp('evidence')}>
+                    <span><strong>{item.label}</strong><small>{item.detail}</small></span><b>↗</b>
+                  </button>
+                ))}
+              </section>
+              <div className={styles.railPrompts}>
+                <button type="button" onClick={() => setFollowUp('risks')}>Challenge this view</button>
+                <button type="button" onClick={() => setFollowUp('change')}>What changed?</button>
+              </div>
+            </>
+          ) : (
+            <div className={styles.emptyEvidence}>
+              <span>⌁</span><strong>Your evidence workspace is ready</strong><p>Ask a question and the relevant sources, chart, and evidence signals will appear here.</p>
+            </div>
+          )}
+        </aside>
       </section>
 
       <details className={styles.advancedDesk}>
@@ -884,7 +943,7 @@ function ResearchJourney({ loading, result, progress }: { loading: boolean; resu
   )
 }
 
-function PriceJourney({ signal }: { signal: SignalRow }) {
+function PriceJourney({ signal, compact = false }: { signal: SignalRow; compact?: boolean }) {
   const rows = signal.priceHistory || []
   if (rows.length < 2) return <div className={styles.chartEmpty}>Price journey unavailable because reliable history was not returned.</div>
   const width = 720
@@ -895,7 +954,7 @@ function PriceJourney({ signal }: { signal: SignalRow }) {
   const spread = max - min || 1
   const points = rows.map((row, index) => `${(index / (rows.length - 1)) * width},${height - ((row.close - min) / spread) * (height - 24) - 12}`).join(' ')
   const change = (values.at(-1)! / values[0] - 1) * 100
-  return <figure className={styles.priceJourney}><figcaption><div><span>Price journey</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg><p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p></figure>
+  return <figure className={`${styles.priceJourney} ${compact ? styles.compactPriceJourney : ''}`}><figcaption><div><span>Price journey</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}-${compact ? 'compact' : 'full'}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol}-${compact ? 'compact' : 'full'})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg>{!compact && <p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p>}</figure>
 }
 
 function EvidenceBalance({ signal }: { signal: SignalRow }) {

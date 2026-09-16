@@ -14,10 +14,10 @@
   grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.65fr);
   gap: 28px;
   width: min(1380px, calc(100% - 32px));
-  min-height: 76vh;
+  min-height: auto;
   margin: 0 auto;
-  padding: 34px 0 22px;
-  align-items: center;
+  padding: 42px 0 28px;
+  align-items: start;
 }
 
 .heroCopy {
@@ -35,7 +35,7 @@
 
 .heroCopy h1 {
   max-width: 780px;
-  font-size: clamp(52px, 7.4vw, 102px);
+  font-size: clamp(48px, 5.8vw, 82px);
   line-height: 0.94;
   letter-spacing: -0.035em;
 }
@@ -977,10 +977,132 @@
   cursor: pointer;
 }
 
-.conversation {
-  width: min(920px, calc(100% - 32px));
-  margin: 36px auto 24px;
+.workspaceShell {
+  display: grid;
+  grid-template-columns: minmax(210px, .72fr) minmax(560px, 2.5fr) minmax(280px, .92fr);
+  gap: 18px;
+  align-items: start;
+  width: min(1500px, calc(100% - 32px));
+  margin: 38px auto 28px;
 }
+
+.conversation { min-width: 0; }
+
+.conversationRail,
+.evidenceRail {
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(16, 26, 29, .14);
+  border-radius: 22px;
+  background: rgba(255, 253, 245, .88);
+  box-shadow: 0 18px 50px rgba(16, 26, 29, .07);
+  backdrop-filter: blur(18px);
+}
+
+.conversationRail { padding: 16px 12px 12px; }
+.evidenceRail { padding: 16px; }
+
+.railHeading,
+.conversationHeader,
+.railSectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.railHeading .kicker { margin: 0 0 2px; }
+.railHeading strong { font-family: Georgia, 'Times New Roman', serif; font-size: 22px; }
+.railHeading > button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #101a1d;
+  color: #fffdf5;
+  font-size: 21px;
+  cursor: pointer;
+}
+.railHeading > button:disabled { opacity: .35; cursor: not-allowed; }
+.railIntro { margin: 14px 2px 16px; color: #687579; font-size: 11px; line-height: 1.5; }
+
+.threadList { display: grid; gap: 7px; }
+.threadList > button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: #101a1d;
+  padding: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.threadList > button:hover { border-color: rgba(16, 26, 29, .13); background: #f7f3e8; }
+.threadList > button.activeThread { border-color: #9c8d5a; background: #fbf0c8; }
+.threadList > button span { color: #9e1b32; font: 9px/1.2 var(--font-geist-mono), monospace; letter-spacing: .08em; text-transform: uppercase; }
+.threadList > button strong { grid-column: 1 / -1; overflow: hidden; font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.threadList > button small { grid-column: 2; grid-row: 1; color: #879094; font-size: 9px; }
+.emptyRail { display: grid; gap: 4px; border: 1px dashed #beb38e; border-radius: 13px; padding: 15px 12px; color: #687579; font-size: 11px; }
+.emptyRail strong { color: #263436; }
+.railStatus { display: flex; align-items: center; gap: 7px; margin-top: 18px; padding: 12px 4px 2px; border-top: 1px solid rgba(16, 26, 29, .09); color: #687579; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.railStatus i { width: 7px; height: 7px; border-radius: 50%; background: #aeb4b0; }
+.railStatus i.statusLive { background: #1c7b57; box-shadow: 0 0 0 4px rgba(28, 123, 87, .1); }
+
+.conversationHeader { margin-bottom: 12px; padding: 2px 4px; }
+.conversationHeader span,
+.conversationHeader strong { display: block; }
+.conversationHeader span { color: #687579; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.conversationHeader strong { margin-top: 3px; font-family: Georgia, 'Times New Roman', serif; font-size: 20px; }
+.conversationHeader time { color: #687579; font: 10px/1.2 var(--font-geist-mono), monospace; }
+
+.evidenceTicker { border: 1px solid #9c8d5a; border-radius: 999px; background: #fbf0c8; padding: 6px 9px; font: 800 11px/1 var(--font-geist-mono), monospace; }
+.evidenceVitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 16px 0; background: rgba(16, 26, 29, .12); }
+.evidenceVitals div { min-width: 0; background: #fffdf5; padding: 9px 7px; }
+.evidenceVitals span,
+.evidenceVitals strong { display: block; }
+.evidenceVitals span { color: #879094; font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.evidenceVitals strong { margin-top: 5px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+.compactPriceJourney { margin: 12px 0 18px; padding: 13px; border-radius: 14px; }
+.compactPriceJourney figcaption strong { font-size: 11px; }
+.compactPriceJourney figcaption b { font-size: 16px; }
+.compactPriceJourney svg { height: 92px; margin: 10px 0 0; }
+
+.railSection { margin-top: 16px; border-top: 1px solid rgba(16, 26, 29, .11); padding-top: 14px; }
+.railSectionTitle { margin-bottom: 8px; }
+.railSectionTitle strong { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.railSectionTitle span { display: grid; min-width: 22px; height: 22px; place-items: center; border-radius: 50%; background: #101a1d; color: #fffdf5; font-size: 9px; }
+.railSection > a,
+.railSection > button { display: flex; align-items: flex-start; gap: 9px; width: 100%; border: 0; border-radius: 10px; background: transparent; color: #263436; padding: 9px 6px; text-align: left; text-decoration: none; cursor: pointer; }
+.railSection > a:hover,
+.railSection > button:hover { background: #f7f3e8; }
+.railSection a i { color: #9e1b32; font: 9px/1.4 var(--font-geist-mono), monospace; font-style: normal; }
+.railSection a span,
+.railSection button span { min-width: 0; flex: 1; }
+.railSection a strong,
+.railSection a small,
+.railSection button strong,
+.railSection button small { display: block; }
+.railSection a strong,
+.railSection button strong { overflow: hidden; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.railSection a small,
+.railSection button small { margin-top: 3px; overflow: hidden; color: #7a8789; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.railSection button b { color: #9e1b32; font-size: 12px; }
+.railEmpty { margin: 0; border: 1px dashed #beb38e; border-radius: 10px; padding: 12px; color: #687579; font-size: 10px; line-height: 1.45; }
+.railPrompts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 16px; }
+.railPrompts button { min-height: 38px; border: 1px solid rgba(16, 26, 29, .15); border-radius: 10px; background: #f7f3e8; color: #263436; padding: 8px; font-size: 10px; font-weight: 850; cursor: pointer; }
+.railPrompts button:first-child { background: #101a1d; color: #fffdf5; }
+.emptyEvidence { display: grid; place-items: center; min-height: 330px; padding: 24px 8px; text-align: center; }
+.emptyEvidence > span { display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid #beb38e; border-radius: 50%; color: #9e1b32; font-size: 24px; }
+.emptyEvidence strong { margin-top: 16px; font-family: Georgia, 'Times New Roman', serif; font-size: 18px; }
+.emptyEvidence p { margin: 8px 0 0; color: #687579; font-size: 11px; line-height: 1.55; }
 .threadBar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr) auto; gap: 10px; align-items: center; margin-bottom: 14px; padding: 12px; border: 1px solid rgba(16,26,29,.14); border-radius: 16px; background: rgba(255,253,245,.86); }
 .threadBar span, .threadBar strong { display: block; }
 .threadBar span { color: #687579; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
@@ -1136,7 +1258,28 @@
 .advancedDesk .ops,
 .advancedDesk .results { width: 100%; }
 
+@media (max-width: 1180px) {
+  .workspaceShell { grid-template-columns: 220px minmax(0, 1fr); }
+  .evidenceRail { position: static; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; max-height: none; }
+  .evidenceRail .railHeading,
+  .evidenceRail .evidenceVitals,
+  .evidenceRail .railPrompts { grid-column: 1 / -1; }
+  .evidenceRail .compactPriceJourney { grid-column: 1; }
+  .evidenceRail .railSection { grid-column: 2; grid-row: auto / span 1; }
+}
+
 @media (max-width: 720px) {
+  .workspaceShell { grid-template-columns: 1fr; width: min(100% - 20px, 1500px); margin-top: 22px; }
+  .conversationRail,
+  .evidenceRail { position: static; max-height: none; }
+  .conversationRail { overflow: hidden; }
+  .threadList { display: flex; overflow-x: auto; padding-bottom: 4px; }
+  .threadList > button { flex: 0 0 210px; }
+  .railStatus,
+  .railIntro { display: none; }
+  .evidenceRail { display: block; }
+  .conversationHeader { padding-inline: 3px; }
+  .conversationHeader time { display: none; }
   .journey ol { grid-template-columns: 1fr; }
   .journey li { min-height: 92px; }
   .answerLead { padding-right: 0; }
@@ -1148,7 +1291,6 @@
   .priceJourney svg { height: 165px; }
   .evidenceBalance > div:first-child { flex-direction: column; }
   .companyTabs { margin-left: 0; }
-  .threadBar { grid-template-columns: 1fr; }
   .transcript > div { max-width: 94%; }
   .outcomeBanner { flex-direction: column; }
   .outcomeBanner span { text-align: left; }

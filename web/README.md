@@ -47,6 +47,12 @@ ticker scope.
 `GET /api/conversations` lists the current user's threads. Supplying a
 `threadId` query parameter returns that owned thread's messages.
 
+The desk presents this state as a responsive analyst workspace: saved threads
+on the left, the continuing analyst dialogue in the center, and a contextual
+evidence rail on the right. The evidence rail follows the active company and
+surfaces source freshness, confidence, price context, and clickable evidence;
+on smaller screens the rails become stacked, touch-friendly sections.
+
 ## Background analysis progress
 
 The desk queues authenticated research through `POST /api/analysis-jobs` and
