@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveAnalysisOutcome, executeWithFallback, runCheckpointedStages } from './analystHarness'
+import { deriveAnalysisOutcome, executeWithFallback, ModelOutputError, runCheckpointedStages } from './analystHarness'
 
 describe('analyst harness outcome', () => {
   it('marks a run complete only when every research report completes', () => {
@@ -83,5 +83,17 @@ describe('analyst harness provider recovery', () => {
     await expect(executeWithFallback(['primary', 'fallback'], 2, async () => {
       throw new SyntaxError('bad JSON')
     }, async () => undefined)).rejects.toThrow('bad JSON')
+  })
+
+  it('retries explicitly recoverable malformed model output', async () => {
+    let calls = 0
+    const result = await executeWithFallback(['primary'], 2, async () => {
+      calls += 1
+      if (calls === 1) throw new ModelOutputError('truncated JSON')
+      return { answer: 'validated' }
+    }, async () => undefined)
+
+    expect(result.value).toEqual({ answer: 'validated' })
+    expect(result.attempts).toBe(2)
   })
 })

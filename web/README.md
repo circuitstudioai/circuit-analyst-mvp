@@ -19,6 +19,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `GEMINI_DEEP_MODEL`: optional primary grounded-research model (defaults to `gemini-3.6-flash`).
 - `GEMINI_FALLBACK_MODEL`: optional secondary Gemini model used after bounded retries on quota, timeout, network, or provider failures.
 - `GEMINI_MODEL`: overrides the Gemini model (defaults to stable `gemini-3.5-flash`).
+- `ALPHA_ALLOWED_EMAILS`: required private-alpha allowlist, as comma/whitespace-separated emails. Use `*` only for local or disposable preview testing; admins always retain access.
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
 
@@ -70,6 +71,7 @@ by the authenticated user that started it.
 
 ```bash
 npm run eval:finance
+npm run eval:finance:live
 npm run build
 npm run lint
 ```
@@ -80,6 +82,33 @@ fallbacks, wrong intent or scope, weak sourcing, one-sided answers, missing
 change conditions, direct trade instructions, and uncalibrated certainty. New
 model or prompt versions should pass this gate before replacing the production
 research path.
+
+`npm run eval:finance:live` runs all eight cases through a deployed app and its
+real Gemini configuration. Set `LIVE_EVAL_BASE_URL` plus the Supabase variables,
+then redirect the JSON output to a dated baseline file. The runner creates a
+temporary admin evaluator per case and removes it afterward.
+
+## Alpha release operations
+
+The private alpha is controlled by `ALPHA_ALLOWED_EMAILS`; authentication alone
+does not grant product access. The migration `20260916183000_alpha_release.sql`
+creates the September 17–30 supervised cohort with five initial seats and closes
+the expiring beta cohort. Newly onboarded invitees join the newest current cohort.
+
+Run the authenticated production journey with `npm run smoke:beta`. It now covers
+sign-in, onboarding, background job polling, a cited answer, a conversational
+follow-up, conversation reload, and feedback. The temporary smoke user is deleted.
+
+Admins can inspect provider consumption and degraded analysis rate with:
+
+```text
+GET /api/admin/ops?hours=24
+```
+
+During the alpha, review that endpoint and `/api/admin/validation?cohort=alpha-2026-09`
+once each business day. Treat any provider authentication failure, error rate over
+20%, or unexpected cost increase as a release incident. The daily review owner is
+the Circuit Studio product owner; user-facing issues go to support@circuitstudio.ai.
 
 ## Two-week beta validation layer
 

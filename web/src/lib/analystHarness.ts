@@ -30,6 +30,13 @@ export class CheckpointedStageError extends Error {
   }
 }
 
+export class ModelOutputError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ModelOutputError'
+  }
+}
+
 export async function runCheckpointedStages(
   definitions: Array<{ name: string; run: (state: Record<string, unknown>) => Promise<unknown> }>,
   store: StageCheckpointStore,
@@ -63,6 +70,7 @@ export async function runCheckpointedStages(
 }
 
 function isTransient(error: unknown) {
+  if (error instanceof ModelOutputError) return true
   const message = error instanceof Error ? error.message : String(error)
   return /429|quota|resource_exhausted|timeout|timed out|5\d\d|unavailable|network|fetch failed/i.test(message)
 }

@@ -1,14 +1,48 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel, type GenerateContentConfig } from '@google/genai'
 import { EngineOutput } from './consensus'
 import { AnalysisIntent, DeepAnalysisReport, DeepAnalysisSource, SignalRow } from './types'
-import { CheckpointedStageError, executeWithFallback, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
+import { CheckpointedStageError, executeWithFallback, ModelOutputError, runCheckpointedStages, StageCheckpointStore, StageRecord, StageTrace } from './analystHarness'
 
 type ResearchFact = { id: string; statement: string; source_url: string; source_title: string; published_at?: string }
 type ResearchPlan = { company_context: string; questions_to_answer: string[]; facts: ResearchFact[] }
 type Debate = { positive_case: string[]; challenge_case: string[]; change_conditions: string[]; cited_fact_ids: string[] }
 
-const MAX_FACTS = 14
+const MAX_FACTS = 10
 const MAX_SOURCES = 8
+const UNCERTAINTY_LANGUAGE = /\b(may|might|could|uncertain|depends|if|risk|evidence|appears|suggests)\b/i
+
+export function calibratedConfidence(value: unknown, answerText: string): DeepAnalysisReport['confidence'] {
+  const confidence = String(value)
+  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return 'low'
+  return confidence === 'high' && !UNCERTAINTY_LANGUAGE.test(answerText) ? 'medium' : confidence
+}
+
+export const researchGenerationConfig = {
+  tools: [{ googleSearch: {} }],
+  responseMimeType: 'application/json',
+  responseJsonSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['company_context', 'questions_to_answer', 'facts'],
+    properties: {
+      company_context: { type: 'string' },
+      questions_to_answer: { type: 'array', maxItems: 6, items: { type: 'string' } },
+      facts: {
+        type: 'array', minItems: 3, maxItems: MAX_FACTS,
+        items: {
+          type: 'object', additionalProperties: false,
+          required: ['id', 'statement', 'source_url', 'source_title'],
+          properties: {
+            id: { type: 'string' }, statement: { type: 'string' }, source_url: { type: 'string' },
+            source_title: { type: 'string' }, published_at: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  maxOutputTokens: 8192,
+  thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+} satisfies GenerateContentConfig
 
 export function classifyIntent(question: string, symbolCount: number): AnalysisIntent {
   const q = question.toLowerCase()
@@ -23,6 +57,13 @@ export function classifyIntent(question: string, symbolCount: number): AnalysisI
 function jsonFrom(text: string) {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   return JSON.parse(cleaned) as Record<string, unknown>
+}
+
+function validatedModelOutput<T>(text: string, validate: (value: Record<string, unknown>) => T) {
+  try { return validate(jsonFrom(text)) }
+  catch (error) {
+    throw new ModelOutputError(error instanceof Error ? error.message : 'Model output validation failed', { cause: error })
+  }
 }
 
 function strings(value: unknown, max = 4) {
@@ -106,8 +147,11 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
       {
         name: 'research',
         run: async () => {
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: researchPrompt, config: { tools: [{ googleSearch: {} }], maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          return { plan: validatePlan(jsonFrom(response.value.text || '')), model: response.model, attempts: response.attempts }
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: researchPrompt, config: researchGenerationConfig })
+            return validatedModelOutput(generated.text || '', validatePlan)
+          })
+          return { plan: response.value, model: response.model, attempts: response.attempts }
         },
       },
       {
@@ -118,8 +162,11 @@ Find current, company-specific evidence. Prefer SEC filings and company investor
 Question: ${question}
 Facts: ${JSON.stringify(plan.facts)}
 Engine context: ${JSON.stringify(engineContext)}`
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 1800, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          return { debate: validateDebate(jsonFrom(response.value.text || ''), new Set(plan.facts.map((fact) => fact.id))), model: response.model, attempts: response.attempts }
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 2600, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            return validatedModelOutput(generated.text || '', (value) => validateDebate(value, new Set(plan.facts.map((fact) => fact.id))))
+          })
+          return { debate: response.value, model: response.model, attempts: response.attempts }
         },
       },
       {
@@ -132,13 +179,15 @@ Question: ${question}
 Company context: ${plan.company_context}
 Facts: ${JSON.stringify(plan.facts)}
 Debate: ${JSON.stringify(debate)}`
-          const response = await executeWithFallback(models, 2, (model) => ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 2200, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } }))
-          const edited = jsonFrom(response.value.text || '')
+          const response = await executeWithFallback(models, 2, async (model) => {
+            const generated = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: 'application/json', maxOutputTokens: 3000, thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
+            return validatedModelOutput(generated.text || '', (value) => value)
+          })
+          const edited = response.value
           const cited = strings(edited.cited_fact_ids, MAX_FACTS)
           const allowed = new Set(plan.facts.map((fact) => fact.id))
           if (!cited.length || cited.some((id) => !allowed.has(id))) throw new Error('editor contains unsupported citations')
           const views = new Set(['favorable', 'mixed', 'unfavorable', 'insufficient_evidence'])
-          const confidences = new Set(['low', 'medium', 'high'])
           const directAnswer = String(edited.direct_answer || '').trim()
           const distinctiveNow = String(edited.distinctive_now || '').trim()
           if (!directAnswer || !distinctiveNow) throw new Error('editor response is incomplete')
@@ -146,7 +195,7 @@ Debate: ${JSON.stringify(debate)}`
           return {
             symbol: signal.symbol, question, intent, status: 'complete' as const,
             view: views.has(String(edited.view)) ? edited.view as DeepAnalysisReport['view'] : 'mixed',
-            confidence: confidences.has(String(edited.confidence)) ? edited.confidence as DeepAnalysisReport['confidence'] : 'low',
+            confidence: calibratedConfidence(edited.confidence, `${directAnswer} ${distinctiveNow}`),
             directAnswer, distinctiveNow,
             strongestEvidence: strings(edited.strongest_evidence),
             strongestCounterargument: strings(edited.strongest_counterargument),
