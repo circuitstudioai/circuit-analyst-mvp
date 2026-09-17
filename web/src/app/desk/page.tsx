@@ -310,6 +310,9 @@ export default function HomePage() {
     setMessages([])
     setResult(null)
     setFollowUp('summary')
+    setQuestion('')
+    setClarification(null)
+    setError('')
   }
 
   function beginFeedback(signal: SignalRow, helpful: boolean) {
@@ -370,65 +373,19 @@ export default function HomePage() {
 
   return (
     <main className={styles.desk}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <p className={styles.kicker}>Circuit Studio AI</p>
-          <h1>Market research, in plain English.</h1>
-          <p>
-            Ask about a company. Market Desk explains what the evidence shows,
-            what could go wrong, and what to watch next.
-          </p>
-        </div>
-
-        <div className={styles.console}>
+      <section className={styles.workspaceShell}>
+        <aside className={styles.conversationRail} aria-label="Research conversations">
           <BetaAccess
             onToken={setAccessToken}
             onLoadWatchlist={loadUserWatchlist}
             onPickSymbol={pickUniverseSymbol}
             compact
           />
-          <div className={styles.consoleTop}>
-            <span>Evidence-led beta</span>
-            <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
-          </div>
-          <form onSubmit={(event) => { event.preventDefault(); void runAnalysis() }}>
-            <label className={styles.label} htmlFor="research-question">Ask about a public company</label>
-            <textarea
-              id="research-question"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              rows={4}
-              className={styles.questionInput}
-              placeholder="For example: What are Nvidia’s biggest risks? Compare AMD and Intel after earnings."
-              maxLength={500}
-            />
-            <p className={styles.inputHint}>Use a company name or ticker. You can ask a comparison or a follow-up in plain English.</p>
-            <button type="submit" disabled={loading || !accessToken || !question.trim()} className={styles.button}>
-              {loading ? 'Researching…' : accessToken ? 'Start research' : 'Sign in to ask'}
-            </button>
-          </form>
-          {clarification && (
-            <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
-              <strong>Which {clarification.phrase} did you mean?</strong>
-              <p>Choose a company and I’ll continue with your question.</p>
-              <div>{clarification.choices.map((choice) => (
-                <button key={`${choice.symbol}-${choice.exchange}`} type="button" onClick={() => void runAnalysis([choice.symbol])}>
-                  <b>{choice.symbol}</b><span>{choice.name}</span><small>{choice.exchange}</small>
-                </button>
-              ))}</div>
-            </div>
-          )}
-          {error && <p className={styles.error}>{error}</p>}
-        </div>
-      </section>
-
-      <section className={styles.workspaceShell}>
-        <aside className={styles.conversationRail} aria-label="Research conversations">
           <div className={styles.railHeading}>
-            <div><p className={styles.kicker}>Research desk</p><strong>Conversations</strong></div>
+            <div><p className={styles.kicker}>Saved work</p><strong>Recent research</strong></div>
             <button type="button" onClick={newConversation} disabled={!accessToken} aria-label="Start a new conversation">+</button>
           </div>
-          <p className={styles.railIntro}>Each thread keeps its question, companies, and verified research context together.</p>
+          <p className={styles.railIntro}>Open a previous question or start a new one.</p>
           <nav className={styles.threadList} aria-label="Saved research conversations">
             {threads.length ? threads.map((thread) => (
               <button
@@ -443,12 +400,12 @@ export default function HomePage() {
               </button>
             )) : <div className={styles.emptyRail}><strong>No saved threads yet</strong><span>Your first question starts one.</span></div>}
           </nav>
-          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Analyst connected' : 'Sign in to begin'}</span></div>
+          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Ready' : 'Sign in to begin'}</span></div>
         </aside>
 
         <section className={styles.conversation} aria-live="polite">
         <div className={styles.conversationHeader}>
-          <div><span>{conversationId ? 'Continuing research' : 'New research thread'}</span><strong>{activeSignal ? `${activeSignal.symbol} analyst room` : 'Ask Circuit'}</strong></div>
+          <div><span>{conversationId ? 'Saved research' : 'New question'}</span><strong>{activeSignal ? `${activeSignal.symbol} research` : 'What do you want to understand?'}</strong></div>
           {result?.asOf && <time dateTime={result.asOf}>Updated {new Date(result.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>}
         </div>
         {messages.length > 0 && (
@@ -457,15 +414,39 @@ export default function HomePage() {
           </div>
         )}
         <ResearchJourney loading={loading} result={result} progress={jobProgress} />
-        {!activeSignal ? (
-          <div className={styles.welcomeMessage}>
-            <span className={styles.assistantMark}>C</span>
-            <div>
-              <strong>What would you like to understand?</strong>
-              <p>Start with one company. I’ll give you a short answer first, then you can explore the risks, evidence, or valuation.</p>
+        {!activeSignal && !loading ? (
+          <section className={styles.questionCard}>
+            <div className={styles.questionCardIntro}>
+              <span className={styles.assistantMark}>C</span>
+              <div><h1>Ask about a company.</h1><p>Start with the decision or concern you have. Include a company name or ticker.</p></div>
             </div>
-          </div>
-        ) : (
+            <form className={styles.primaryComposer} onSubmit={(event) => { event.preventDefault(); void runAnalysis() }}>
+              <label htmlFor="research-question">Your question</label>
+              <textarea
+                id="research-question"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                rows={5}
+                placeholder="What are Nvidia’s biggest risks?"
+                maxLength={500}
+                autoFocus
+              />
+              <div><span>Try “Compare AMD and Intel after earnings.”</span><button type="submit" disabled={loading || !accessToken || !question.trim()}>{loading ? 'Researching…' : accessToken ? 'Start research' : 'Sign in first'}</button></div>
+            </form>
+            {clarification && (
+              <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
+                <strong>Which {clarification.phrase} did you mean?</strong>
+                <p>Choose a company and I’ll continue with your question.</p>
+                <div>{clarification.choices.map((choice) => (
+                  <button key={`${choice.symbol}-${choice.exchange}`} type="button" onClick={() => void runAnalysis([choice.symbol])}>
+                    <b>{choice.symbol}</b><span>{choice.name}</span><small>{choice.exchange}</small>
+                  </button>
+                ))}</div>
+              </div>
+            )}
+            {error && <p className={styles.error}>{error}</p>}
+          </section>
+        ) : activeSignal ? (
           <>
             {result && result.signals.length > 1 && (
               <div className={styles.companyTabs} aria-label="Analyzed companies">
@@ -479,8 +460,8 @@ export default function HomePage() {
             <article className={styles.answerCard}>
               {result?.outcome && (
                 <div className={`${styles.outcomeBanner} ${styles[`outcome_${result.outcome.researchStatus}`]}`}>
-                  <strong>{result.outcome.researchStatus === 'complete' ? `AI research complete — ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Partial research result' : 'Technical snapshot only'}</strong>
-                  <span>{result.outcome.researchStatus === 'complete' ? 'Research, challenge, synthesis, and citation checks completed.' : result.outcome.error || 'Some research stages were unavailable.'}</span>
+                  <strong>{result.outcome.researchStatus === 'complete' ? `Research complete · ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Some research is unavailable' : 'Price and trend data only'}</strong>
+                  <span>{result.outcome.researchStatus === 'complete' ? 'Sources and counterarguments were checked.' : result.outcome.error || 'Part of the research could not be completed.'}</span>
                 </div>
               )}
               {resumableRunId && result && (
@@ -491,7 +472,7 @@ export default function HomePage() {
               <div className={styles.answerLead}>
                 <span className={styles.assistantMark}>C</span>
                 <div>
-                  <p className={styles.kicker}>Final research decision</p>
+                  <p className={styles.kicker}>Current view</p>
                   <h2>{researchAction(activeSignal)}</h2>
                 </div>
                 <span className={styles.viewBadge}>{evidenceView(activeSignal)}</span>
@@ -504,7 +485,7 @@ export default function HomePage() {
 
               {followUp === 'summary' && activeSignal.deepAnalysis?.status === 'complete' && <DeepResearchBrief signal={activeSignal} />}
               {followUp === 'summary' && activeSignal.deepAnalysis?.status !== 'complete' && <>
-                <div className={styles.fallbackNotice}><strong>Fast fallback shown</strong><span>Deep company research was unavailable. This view uses price and trend evidence only.</span></div>
+                <div className={styles.fallbackNotice}><strong>Limited result</strong><span>Company research was unavailable, so this answer uses price and trend data only.</span></div>
                 <p className={styles.answerText}>{activeSignal.aiExplanation || activeSignal.thesis}</p>
                 <div className={styles.answerGrid}>
                   <div><span>Why <InfoTip label="How the recent trend is measured" text="We compare the stock’s average price over about one month with its average over about five months. Exact values remain in Advanced evidence." /></span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
@@ -536,12 +517,12 @@ export default function HomePage() {
               <p className={styles.answerCaveat}>Educational research support only. The evidence can be incomplete or wrong; verify it before making financial decisions.</p>
             </article>
           </>
-        )}
+        ) : null}
         </section>
 
-        <aside className={styles.evidenceRail} aria-label="Contextual evidence workspace">
+        <aside className={styles.evidenceRail} aria-label="Evidence for this answer">
           <div className={styles.railHeading}>
-            <div><p className={styles.kicker}>Live context</p><strong>Evidence</strong></div>
+            <div><p className={styles.kicker}>For this answer</p><strong>Evidence</strong></div>
             {evidencePanel && <span className={styles.evidenceTicker}>{evidencePanel.symbol}</span>}
           </div>
           {evidencePanel && activeSignal ? (
@@ -575,7 +556,7 @@ export default function HomePage() {
             </>
           ) : (
             <div className={styles.emptyEvidence}>
-              <span>⌁</span><strong>Your evidence workspace is ready</strong><p>Ask a question and the relevant sources, chart, and evidence signals will appear here.</p>
+              <span>⌁</span><strong>Sources and charts appear here</strong><p>Ask a question to see the data and sources used in the answer.</p>
             </div>
           )}
         </aside>
@@ -595,8 +576,8 @@ export default function HomePage() {
       <section className={styles.ops}>
         <div className={styles.topSetups}>
           <div className={styles.panelHeader}>
-            <p className={styles.kicker}>Top setups</p>
-            <strong>{result ? `${topSetups.length} ranked` : 'Awaiting run'}</strong>
+            <p className={styles.kicker}>Ranked results</p>
+            <strong>{result ? `${topSetups.length} shown` : 'No research yet'}</strong>
           </div>
           <div className={styles.setupGrid}>
             {(topSetups.length ? topSetups : placeholderSetups()).map((signal) => (
@@ -611,8 +592,8 @@ export default function HomePage() {
 
         <div className={styles.runLedger}>
           <div className={styles.panelHeader}>
-            <p className={styles.kicker}>Run ledger</p>
-            <strong>{visibleRuns.length ? `${visibleRuns.length} stored` : 'Storage idle'}</strong>
+            <p className={styles.kicker}>Saved runs</p>
+            <strong>{visibleRuns.length ? `${visibleRuns.length} saved` : 'None saved'}</strong>
           </div>
           {visibleRuns.length ? (
             <ol>
@@ -624,7 +605,7 @@ export default function HomePage() {
               ))}
             </ol>
           ) : (
-            <p>Supabase is not connected on this deployment.</p>
+            <p>No saved runs are available.</p>
           )}
         </div>
 
@@ -644,8 +625,8 @@ export default function HomePage() {
       <section className={styles.results}>
         <div className={styles.resultHeader}>
           <div>
-            <p className={styles.kicker}>Multi-engine control desk</p>
-            <h2>{deskConsensus.length ? `${deskConsensus.length} consensus views` : 'Awaiting independent engines'}</h2>
+            <p className={styles.kicker}>Model comparison</p>
+            <h2>{deskConsensus.length ? `${deskConsensus.length} combined views` : 'No model comparison yet'}</h2>
           </div>
           <span className={styles.meta}>{deskEngines.length} engine outputs</span>
         </div>
@@ -675,15 +656,15 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div className={styles.empty}><strong>No synthetic consensus.</strong><span>The desk will show agreement only after at least two independent engine outputs arrive for the same run and ticker.</span></div>
+          <div className={styles.empty}><strong>No comparison available.</strong><span>This section needs results from at least two independent models for the same company.</span></div>
         )}
       </section>
 
       <section className={styles.results}>
         <div className={styles.resultHeader}>
           <div>
-            <p className={styles.kicker}>Analyst report</p>
-            <h2>{result ? `${result.signals.length} symbols scored` : 'Run a watchlist to generate the desk'}</h2>
+            <p className={styles.kicker}>Detailed results</p>
+            <h2>{result ? `${result.signals.length} ${result.signals.length === 1 ? 'company' : 'companies'}` : 'Ask a question to begin'}</h2>
           </div>
           <div className={styles.actions}>
             {result?.asOf && <span className={styles.meta}>As of {new Date(result.asOf).toLocaleString()}</span>}
@@ -695,8 +676,8 @@ export default function HomePage() {
 
         {!result ? (
           <div className={styles.empty}>
-            <strong>Try NVDA, AMD, SOFI, or your own watchlist.</strong>
-            <span>Sign in with a beta magic link, search any supported ticker, and run a live evidence-led analysis.</span>
+            <strong>No detailed results yet.</strong>
+            <span>Ask about a supported public company to see the underlying scores and evidence.</span>
           </div>
         ) : (
           <div className={styles.reportGrid}>
@@ -814,8 +795,8 @@ export default function HomePage() {
           <div className={styles.feedbackModal}>
             <button type="button" className={styles.modalClose} onClick={() => { setGeneralFeedbackOpen(false); setGeneralFeedbackState('idle') }} aria-label="Close feedback">×</button>
             <p className={styles.kicker}>Beta line</p>
-            <h2 id="beta-feedback-title">Tell us where the desk broke down.</h2>
-            <p>Bugs, confusing language, missing context, or moments that saved you time—all signal, no ceremony.</p>
+            <h2 id="beta-feedback-title">Tell us what worked or failed.</h2>
+            <p>Share bugs, confusing language, missing context, or anything that saved you time.</p>
             <textarea value={generalComment} onChange={(event) => setGeneralComment(event.target.value)} maxLength={1000} rows={5} placeholder="What happened?" />
             <button type="button" onClick={submitGeneralFeedback} disabled={!generalComment.trim() || generalFeedbackState === 'sending'}>
               {generalFeedbackState === 'sending' ? 'Sending…' : generalFeedbackState === 'saved' ? 'Feedback saved' : 'Send to the product team'}
@@ -846,10 +827,10 @@ function PipelineItem({ step }: { step: PipelineStep }) {
 
 function ResearchJourney({ loading, result, progress }: { loading: boolean; result: AnalyzeResponse | null; progress: JobProgress | null }) {
   const stages = [
-    ['Market reader', 'Gathering current price history', null],
-    ['Evidence analyst', 'Checking research and company context', 'research'],
-    ['Risk reviewer', 'Testing what could weaken the case', 'challenge'],
-    ['Decision editor', 'Reconciling the evidence in plain English', 'synthesis'],
+    ['Market data', 'Gathering current price history', null],
+    ['Company research', 'Checking filings, results, and company context', 'research'],
+    ['Risks', 'Checking what could weaken the case', 'challenge'],
+    ['Answer', 'Summarizing the evidence in plain English', 'synthesis'],
   ] as const
   if (!loading && !result) return null
   const progressIndex = progress?.currentStage === 'market_data' ? 0
@@ -859,12 +840,12 @@ function ResearchJourney({ loading, result, progress }: { loading: boolean; resu
   const displayedActive = !loading && result ? stages.length : progressIndex
   const researchComplete = result?.outcome?.researchStatus === 'complete'
   const actualDetail = (name: string, fallback: string) => {
-    const label = name === 'Market reader' ? 'Public price fetch' : name === 'Evidence analyst' ? 'Research evidence' : name === 'Decision editor' ? 'AI summary' : 'Rule scoring'
+    const label = name === 'Market data' ? 'Public price fetch' : name === 'Company research' ? 'Research evidence' : name === 'Answer' ? 'AI summary' : 'Rule scoring'
     return result?.pipeline.find((step) => step.label === label)?.detail || fallback
   }
   return (
     <section className={styles.journey} aria-label="Research progress">
-      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{loading && progress ? `${progress.percent}%` : `${Math.max(displayedActive, 1)}/${stages.length}`}</span></div>
+      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Research progress</p><h2>{loading ? 'Checking the evidence…' : researchComplete ? 'Research complete' : 'Some research is unavailable'}</h2></div><span>{loading && progress ? `${progress.percent}%` : `${Math.max(displayedActive, 1)}/${stages.length}`}</span></div>
       <ol>
         {stages.map(([name, detail, checkpointName], index) => {
           const checkpoint = checkpointName ? result?.signals[0]?.deepAnalysis?.stages?.find((stage) => stage.name === checkpointName) : undefined
@@ -906,7 +887,7 @@ function DeepResearchBrief({ signal }: { signal: SignalRow }) {
   return <div className={styles.deepBrief}>
     <p className={styles.askedQuestion}>“{report.question}”</p>
     <p className={styles.answerText}>{report.directAnswer}</p>
-    <section className={styles.distinctiveBlock}><span>What is distinctive now</span><p>{report.distinctiveNow}</p></section>
+    <section className={styles.distinctiveBlock}><span>What matters now</span><p>{report.distinctiveNow}</p></section>
     <div className={styles.debateGrid}>
       <section><span className={styles.debateLabel}>Strongest evidence</span><ul>{report.strongestEvidence.map((item) => <li key={item}>{item}</li>)}</ul></section>
       <section><span className={styles.debateLabel}>Strongest counterargument</span><ul>{report.strongestCounterargument.map((item) => <li key={item}>{item}</li>)}</ul></section>
