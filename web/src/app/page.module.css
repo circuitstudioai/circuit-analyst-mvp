@@ -316,6 +316,14 @@
 
 .questionInput { width: 100%; resize: vertical; border: 1px solid rgba(16,26,29,.18); border-radius: 16px; background: #fffdf7; color: #172326; padding: 14px 16px; font: inherit; line-height: 1.5; }
 .questionInput:focus { outline: 3px solid rgba(189,111,55,.18); border-color: #a85d2c; }
+.clarification { margin-top: 16px; padding: 14px; border: 1px solid rgba(16,26,29,.18); background: #f8f1df; }
+.clarification > strong, .clarification > p { display: block; margin: 0; }
+.clarification > p { margin-top: 5px; color: #526468; font-size: 13px; }
+.clarification > div { display: grid; gap: 7px; margin-top: 12px; }
+.clarification button { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; border: 1px solid rgba(16,26,29,.2); background: #fffdf7; color: #101a1d; padding: 10px; text-align: left; cursor: pointer; }
+.clarification button:hover, .clarification button:focus-visible { border-color: #245d4b; outline: 2px solid rgba(36,93,75,.16); }
+.clarification button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clarification button small { color: #687579; }
 .deepBrief { display: grid; gap: 24px; }
 .askedQuestion { margin: 0; color: #687579; font-family: Georgia, serif; font-size: 18px; font-style: italic; }
 .distinctiveBlock, .changeBlock, .sourceShelf { padding: 20px; border-left: 3px solid #b76d38; background: #fbf7ed; }

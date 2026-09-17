@@ -6,20 +6,14 @@ import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, Si
 import { BetaAccess } from '../BetaAccess'
 import { evidenceWorkspace } from '@/lib/analystWorkspace'
 
-const samples = [
-  ['NVDA'],
-  ['JPM'],
-  ['COST'],
-  ['NVDA', 'AMD'],
-  ['HIMS', 'OSCR'],
-]
-
-type SymbolSearchResult = {
+type CompanyChoice = {
   symbol: string
   name: string
   exchange: string
   type: string
 }
+
+type CompanyClarification = { phrase: string; choices: CompanyChoice[] }
 
 type FeedbackDraft = {
   helpful: boolean
@@ -88,10 +82,10 @@ function researchAction(signal: SignalRow) {
 }
 
 export default function HomePage() {
-  const [question, setQuestion] = useState('How does the evidence look now?')
+  const [question, setQuestion] = useState('')
   const [watchlistText, setWatchlistText] = useState(() => {
-    if (typeof window === 'undefined') return 'NVDA'
-    return new URLSearchParams(window.location.search).get('tickers') || 'NVDA'
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('tickers') || ''
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
@@ -104,9 +98,7 @@ export default function HomePage() {
   const [generalFeedbackOpen, setGeneralFeedbackOpen] = useState(false)
   const [generalComment, setGeneralComment] = useState('')
   const [generalFeedbackState, setGeneralFeedbackState] = useState<'idle' | 'sending' | 'saved' | 'error'>('idle')
-  const [symbolQuery, setSymbolQuery] = useState('')
-  const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([])
-  const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
+  const [clarification, setClarification] = useState<CompanyClarification | null>(null)
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null)
   const [followUp, setFollowUp] = useState<FollowUp>('summary')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -117,7 +109,7 @@ export default function HomePage() {
   const openedRun = useRef<string | null>(null)
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
-    setWatchlistText((current) => current === 'NVDA' ? symbols.slice(0, 2).join(', ') : current)
+    setWatchlistText((current) => current || symbols.slice(0, 2).join(', '))
   }, [])
 
   const pickUniverseSymbol = useCallback((symbol: string) => {
@@ -131,34 +123,6 @@ export default function HomePage() {
     () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
     [watchlistText]
   )
-
-  useEffect(() => {
-    const query = symbolQuery.trim()
-    if (!query) return
-    const controller = new AbortController()
-    const timer = window.setTimeout(async () => {
-      setSymbolSearchState('searching')
-      try {
-        const response = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
-        const data = await response.json()
-        setSymbolResults(Array.isArray(data?.items) ? data.items : [])
-      } catch {
-        if (!controller.signal.aborted) setSymbolResults([])
-      } finally {
-        if (!controller.signal.aborted) setSymbolSearchState('ready')
-      }
-    }, 250)
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [symbolQuery])
-
-  function addSymbol(symbol: string) {
-    pickUniverseSymbol(symbol)
-    setSymbolQuery('')
-    setSymbolResults([])
-  }
 
   const topSetups = useMemo(() => {
     if (!result) return []
@@ -256,7 +220,7 @@ export default function HomePage() {
     })
   }, [result, trackEvent])
 
-  async function runAnalysis(symbols = watchlist, resumeRunId?: number, askedQuestion = question) {
+  async function runAnalysis(symbols: string[] = [], resumeRunId?: number, askedQuestion = question) {
     if (!accessToken) {
       setError('Sign in with a beta magic link to run analysis.')
       return
@@ -264,6 +228,7 @@ export default function HomePage() {
     setLoading(true)
     setJobProgress({ status: 'queued', currentStage: 'queued', completedStages: [], percent: 0, terminal: false })
     setError('')
+    setClarification(null)
     try {
       const res = await fetch('/api/analysis-jobs', {
         method: 'POST',
@@ -271,7 +236,13 @@ export default function HomePage() {
         body: JSON.stringify({ watchlist: symbols, question: askedQuestion, resumeRunId, threadId: conversationId }),
       })
       const queued = await res.json()
-      if (!res.ok) throw new Error(queued?.error || 'Analyze failed')
+      if (res.status === 409 && queued?.resolution?.status === 'ambiguous') {
+        setClarification({ phrase: queued.resolution.phrase, choices: queued.resolution.choices })
+        return
+      }
+      if (!res.ok) throw new Error(queued?.error || 'Could not start research.')
+      const resolvedSymbols = Array.isArray(queued.symbols) ? queued.symbols : symbols
+      if (resolvedSymbols.length) setWatchlistText(resolvedSymbols.join(', '))
       let data: AnalyzeResponse | null = null
       for (let attempt = 0; attempt < 360; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000))
@@ -311,7 +282,7 @@ export default function HomePage() {
       void fetchRecentRuns()
       void refreshConversations(data.conversationId)
       const url = new URL(window.location.href)
-      url.searchParams.set('tickers', symbols.join(','))
+      if (data.watchlist.length) url.searchParams.set('tickers', data.watchlist.join(','))
       window.history.replaceState(null, '', url)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed')
@@ -385,11 +356,6 @@ export default function HomePage() {
     if (response.ok) setGeneralComment('')
   }
 
-  function loadSample(symbols: string[]) {
-    setWatchlistText(symbols.join(', '))
-    void runAnalysis(symbols)
-  }
-
   function copyReport() {
     if (!result) return
     const lines = result.signals.map((s) => {
@@ -425,63 +391,33 @@ export default function HomePage() {
             <span>Evidence-led beta</span>
             <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
           </div>
-          <label className={styles.label}>Which company should we research?</label>
-          <div className={styles.symbolSearch}>
-            <input
-              value={symbolQuery}
-              onChange={(event) => {
-                const next = event.target.value
-                setSymbolQuery(next)
-                if (!next.trim()) {
-                  setSymbolResults([])
-                  setSymbolSearchState('idle')
-                }
-              }}
-              placeholder="Type a company name or ticker — e.g. Nvidia"
-              aria-label="Search live market symbols"
-              autoComplete="off"
+          <form onSubmit={(event) => { event.preventDefault(); void runAnalysis() }}>
+            <label className={styles.label} htmlFor="research-question">Ask about a public company</label>
+            <textarea
+              id="research-question"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              rows={4}
+              className={styles.questionInput}
+              placeholder="For example: What are Nvidia’s biggest risks? Compare AMD and Intel after earnings."
+              maxLength={500}
             />
-            <span>{symbolSearchState === 'searching' ? 'Searching…' : 'Live symbol lookup'}</span>
-            {symbolQuery && symbolSearchState === 'ready' && (
-              <div className={styles.symbolResults} role="listbox" aria-label="Symbol search results">
-                {symbolResults.length ? symbolResults.map((item) => (
-                  <button key={`${item.symbol}-${item.exchange}`} type="button" onClick={() => addSymbol(item.symbol)}>
-                    <strong>{item.symbol}</strong>
-                    <span>{item.name}</span>
-                    <small>{item.exchange} · {item.type}</small>
-                  </button>
-                )) : <p>No supported equity or ETF found.</p>}
-              </div>
-            )}
-          </div>
-          <textarea
-            value={watchlistText}
-            onChange={(e) => setWatchlistText(e.target.value)}
-            rows={2}
-            className={styles.textarea}
-            aria-label="Ticker watchlist"
-          />
-          <label className={styles.label} htmlFor="research-question">What do you want to understand?</label>
-          <textarea
-            id="research-question"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            rows={3}
-            className={styles.questionInput}
-            placeholder="For example: What are the biggest risks? Is the valuation supported? What changed after earnings?"
-            maxLength={500}
-          />
-          <p className={styles.inputHint}>Ask naturally. The analysts will choose evidence based on your question.</p>
-          <div className={styles.sampleRow}>
-            {samples.map((symbols) => (
-              <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
-                {symbols.length === 1 ? symbols[0] : `${symbols.length} names`}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => runAnalysis()} disabled={loading || !accessToken} className={styles.button}>
-            {loading ? 'Reading the evidence…' : accessToken ? 'Help me understand' : 'Sign in to ask'}
-          </button>
+            <p className={styles.inputHint}>Use a company name or ticker. You can ask a comparison or a follow-up in plain English.</p>
+            <button type="submit" disabled={loading || !accessToken || !question.trim()} className={styles.button}>
+              {loading ? 'Researching…' : accessToken ? 'Start research' : 'Sign in to ask'}
+            </button>
+          </form>
+          {clarification && (
+            <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
+              <strong>Which {clarification.phrase} did you mean?</strong>
+              <p>Choose a company and I’ll continue with your question.</p>
+              <div>{clarification.choices.map((choice) => (
+                <button key={`${choice.symbol}-${choice.exchange}`} type="button" onClick={() => void runAnalysis([choice.symbol])}>
+                  <b>{choice.symbol}</b><span>{choice.name}</span><small>{choice.exchange}</small>
+                </button>
+              ))}</div>
+            </div>
+          )}
           {error && <p className={styles.error}>{error}</p>}
         </div>
       </section>
