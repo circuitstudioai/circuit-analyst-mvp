@@ -7,6 +7,8 @@ const catalog: CompanyCandidate[] = [
   { symbol: 'TSLA', name: 'Tesla, Inc.', exchange: 'NASDAQ', type: 'EQUITY' },
   { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', type: 'EQUITY' },
   { symbol: 'APLE', name: 'Apple Hospitality REIT, Inc.', exchange: 'NYSE', type: 'EQUITY' },
+  { symbol: 'ALPH', name: 'Alpha Corp.', exchange: 'NASDAQ', type: 'EQUITY' },
+  { symbol: 'ALPI', name: 'Alpha Inc.', exchange: 'NYSE', type: 'EQUITY' },
 ]
 
 describe('question-first company resolution', () => {
@@ -33,8 +35,14 @@ describe('question-first company resolution', () => {
   })
 
   it('returns choices when a company phrase has multiple plausible matches', () => {
-    expect(resolveCompanyQuestion('What are the biggest risks for Apple?', catalog)).toEqual({
-      status: 'ambiguous', phrase: 'Apple', choices: [catalog[3], catalog[4]],
+    expect(resolveCompanyQuestion('What are the biggest risks for Alpha?', catalog)).toEqual({
+      status: 'ambiguous', phrase: 'Alpha', choices: [catalog[5], catalog[6]],
+    })
+  })
+
+  it('prefers an exact primary company name over products that contain the same brand', () => {
+    expect(resolveCompanyQuestion('What are the biggest risks for Apple?', catalog)).toMatchObject({
+      status: 'resolved', symbols: ['AAPL'],
     })
   })
 

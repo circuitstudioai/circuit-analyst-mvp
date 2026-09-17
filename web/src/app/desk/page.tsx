@@ -5,6 +5,7 @@ import styles from '../page.module.css'
 import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from '../BetaAccess'
 import { evidenceWorkspace } from '@/lib/analystWorkspace'
+import { contextualVisual, priceChange } from '@/lib/contextualVisual'
 
 type CompanyChoice = {
   symbol: string
@@ -141,6 +142,8 @@ export default function HomePage() {
   const visibleRuns = accessToken ? recentRuns : []
   const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
   const evidencePanel = activeSignal ? evidenceWorkspace(activeSignal) : null
+  const activeIntent = result?.intent || activeSignal?.deepAnalysis?.intent
+  const evidenceVisual = activeSignal ? contextualVisual(activeIntent, activeSignal) : null
   const resumableRunId = result?.outcome?.researchStatus !== 'complete' ? result?.saved?.runId : undefined
 
   async function fetchRecentRuns() {
@@ -532,7 +535,7 @@ export default function HomePage() {
                 <div><span>Confidence</span><strong>{evidencePanel.confidence}</strong></div>
                 <div><span>Freshness</span><strong>{evidencePanel.freshness}</strong></div>
               </div>
-              <PriceJourney signal={activeSignal} compact />
+              {evidenceVisual && <ContextualEvidenceVisual visual={evidenceVisual} signal={activeSignal} signals={result?.signals || [activeSignal]} />}
               <section className={styles.railSection}>
                 <div className={styles.railSectionTitle}><strong>Source file</strong><span>{evidencePanel.sourceCount}</span></div>
                 {evidencePanel.sources.length ? evidencePanel.sources.slice(0, 5).map((source, index) => (
@@ -860,7 +863,39 @@ function ResearchJourney({ loading, result, progress }: { loading: boolean; resu
   )
 }
 
-function PriceJourney({ signal, compact = false }: { signal: SignalRow; compact?: boolean }) {
+function ContextualEvidenceVisual({ visual, signal, signals }: {
+  visual: ReturnType<typeof contextualVisual>
+  signal: SignalRow
+  signals: SignalRow[]
+}) {
+  if (visual.kind === 'price') return <PriceJourney signal={signal} compact title={visual.title} />
+  if (visual.kind === 'risk') {
+    const total = Math.max(1, visual.favorable + visual.caution + visual.uncertain)
+    return <section className={styles.contextVisual} aria-label="Balance of the case and risks">
+      <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+      <div className={styles.riskTotals}><b>{visual.favorable}<small>supporting</small></b><b>{visual.caution}<small>caution</small></b><b>{visual.uncertain}<small>uncertain</small></b></div>
+      <div className={styles.balanceBar} aria-hidden="true"><i className={styles.favorableBar} style={{ width: `${visual.favorable / total * 100}%` }}/><i className={styles.cautionBar} style={{ width: `${visual.caution / total * 100}%` }}/><i className={styles.uncertainBar} style={{ width: `${visual.uncertain / total * 100}%` }}/></div>
+      <p>These are counts of the points shown in the report, not probabilities.</p>
+    </section>
+  }
+  if (visual.kind === 'valuation') {
+    return <section className={styles.contextVisual} aria-label="Valuation evidence">
+      <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+      {visual.available ? <ul>{visual.items.slice(0, 4).map((item) => <li key={`${item.label}-${item.detail}`}><strong>{item.label}</strong><span>{item.detail}</span></li>)}</ul> : <div className={styles.visualUnavailable}><strong>No reliable valuation figure in this result</strong><span>The answer will not invent a multiple, target, or consensus estimate.</span></div>}
+    </section>
+  }
+  return <section className={styles.contextVisual} aria-label="Company comparison">
+    <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+    <div className={styles.comparisonRows}>{signals.map((item) => {
+      const change = priceChange(item)
+      const evidenceCount = item.bullCase.length + item.bearCase.length + item.riskFlags.length
+      return <div key={item.symbol}><b>{item.symbol}</b><span>{change === null ? 'Price unavailable' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}% price`}</span><small>{evidenceCount} evidence points</small></div>
+    })}</div>
+    <p>Price changes use each company’s returned history. Evidence counts are not scores.</p>
+  </section>
+}
+
+function PriceJourney({ signal, compact = false, title = 'Price journey' }: { signal: SignalRow; compact?: boolean; title?: string }) {
   const rows = signal.priceHistory || []
   if (rows.length < 2) return <div className={styles.chartEmpty}>Price journey unavailable because reliable history was not returned.</div>
   const width = 720
@@ -871,7 +906,7 @@ function PriceJourney({ signal, compact = false }: { signal: SignalRow; compact?
   const spread = max - min || 1
   const points = rows.map((row, index) => `${(index / (rows.length - 1)) * width},${height - ((row.close - min) / spread) * (height - 24) - 12}`).join(' ')
   const change = (values.at(-1)! / values[0] - 1) * 100
-  return <figure className={`${styles.priceJourney} ${compact ? styles.compactPriceJourney : ''}`}><figcaption><div><span>Price journey</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}-${compact ? 'compact' : 'full'}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol}-${compact ? 'compact' : 'full'})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg>{!compact && <p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p>}</figure>
+  return <figure className={`${styles.priceJourney} ${compact ? styles.compactPriceJourney : ''}`}><figcaption><div><span>{title}</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}-${compact ? 'compact' : 'full'}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol}-${compact ? 'compact' : 'full'})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg>{!compact && <p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p>}</figure>
 }
 
 function EvidenceBalance({ signal }: { signal: SignalRow }) {

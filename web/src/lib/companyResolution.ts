@@ -18,6 +18,7 @@ const ignoredUppercaseWords = new Set([
 ])
 
 const companySuffixes = /\s+(corporation|corp\.?|inc\.?|incorporated|company|co\.?|plc|holdings?|group|limited|ltd\.?)$/i
+const primaryUsExchanges = new Set(['NMS', 'NYQ', 'NGM', 'NCM', 'NASDAQ', 'NYSE'])
 const queryStopWords = new Set([
   'after', 'and', 'are', 'before', 'biggest', 'compare', 'could', 'does', 'earnings',
   'for', 'growth', 'how', 'is', 'look', 'much', 'now', 'priced', 'risk', 'risks',
@@ -32,6 +33,10 @@ function aliases(candidate: CompanyCandidate) {
   const name = normalized(candidate.name.replace(companySuffixes, ''))
   const firstWord = name.split(' ')[0]
   return [...new Set([name, firstWord].filter((alias) => alias.length >= 3))]
+}
+
+function canonicalCompanyName(candidate: CompanyCandidate) {
+  return normalized(candidate.name.replace(companySuffixes, ''))
 }
 
 export function companySearchQueries(question: string) {
@@ -81,6 +86,18 @@ export function resolveCompanyQuestion(question: string, candidates: CompanyCand
   const orderedPhraseGroups = [...phraseGroups.entries()].sort((a, b) => a[1][0].index - b[1][0].index || b[0].length - a[0].length)
   for (const [phrase, group] of orderedPhraseGroups) {
     const unique = [...new Map(group.map((item) => [item.candidate.symbol, item])).values()]
+    const exact = unique.filter((item) => canonicalCompanyName(item.candidate) === phrase)
+    const exactPrimary = exact.filter((item) => primaryUsExchanges.has(item.candidate.exchange.toUpperCase()))
+    if (exactPrimary.length === 1) {
+      matches.push(exactPrimary[0])
+      continue
+    }
+    if (exactPrimary.length > 1) {
+      return {
+        status: 'ambiguous', phrase: phrase.replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        choices: exactPrimary.map((item) => item.candidate).slice(0, 5),
+      }
+    }
     if (unique.length > 1 && !unique.some((item) => matches.some((match) => match.candidate.symbol === item.candidate.symbol))) {
       return {
         status: 'ambiguous',
