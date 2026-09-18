@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
-import Link from 'next/link'
 import styles from './page.module.css'
 
 type UniverseSymbol = { symbol: string; company_name: string; rank: number }
@@ -153,7 +152,7 @@ export function BetaAccess({
   }
 
   return (
-    <div className={styles.betaAccess}>
+    <div className={`${styles.betaAccess} ${compact ? styles.compactAuthController : ''}`}>
       <div className={styles.betaHeader}>
         <div>
           <span className={styles.betaEyebrow}>Private beta · 50 seats</span>
@@ -163,10 +162,7 @@ export function BetaAccess({
       </div>
 
       {!session && compact ? (
-        <div className={styles.compactSignIn}>
-          <p>Sign in to ask a research question and save your history.</p>
-          <Link href="/login">Continue to sign in</Link>
-        </div>
+        null
       ) : !session ? (
         <form className={`${styles.authForm} ${authMode === 'presenter' ? styles.presenterAuthForm : ''}`} onSubmit={authMode === 'presenter' ? signInPresenter : requestMagicLink}>
           <input

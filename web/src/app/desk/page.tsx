@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import styles from '../page.module.css'
 import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from '../BetaAccess'
@@ -83,6 +84,7 @@ function researchAction(signal: SignalRow) {
 }
 
 export default function HomePage() {
+  const router = useRouter()
   const [question, setQuestion] = useState('')
   const [watchlistText, setWatchlistText] = useState(() => {
     if (typeof window === 'undefined') return ''
@@ -108,6 +110,14 @@ export default function HomePage() {
   const [followUpQuestion, setFollowUpQuestion] = useState('')
   const [jobProgress, setJobProgress] = useState<JobProgress | null>(null)
   const openedRun = useRef<string | null>(null)
+
+  useEffect(() => {
+    const pendingQuestion = window.sessionStorage.getItem('pending-research-question')
+    if (!pendingQuestion) return
+    const timer = window.setTimeout(() => setQuestion(pendingQuestion), 0)
+    window.sessionStorage.removeItem('pending-research-question')
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
     setWatchlistText((current) => current || symbols.slice(0, 2).join(', '))
@@ -225,7 +235,8 @@ export default function HomePage() {
 
   async function runAnalysis(symbols: string[] = [], resumeRunId?: number, askedQuestion = question) {
     if (!accessToken) {
-      setError('Sign in with a beta magic link to run analysis.')
+      if (askedQuestion.trim()) window.sessionStorage.setItem('pending-research-question', askedQuestion.trim())
+      router.push('/login?next=/desk')
       return
     }
     setLoading(true)
@@ -403,7 +414,7 @@ export default function HomePage() {
               </button>
             )) : <div className={styles.emptyRail}><strong>No saved threads yet</strong><span>Your first question starts one.</span></div>}
           </nav>
-          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Ready' : 'Sign in to begin'}</span></div>
+          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Ready' : 'Saved research appears here'}</span></div>
         </aside>
 
         <section className={styles.conversation} aria-live="polite">
@@ -434,7 +445,7 @@ export default function HomePage() {
                 maxLength={500}
                 autoFocus
               />
-              <div><span>Try “Compare AMD and Intel after earnings.”</span><button type="submit" disabled={loading || !accessToken || !question.trim()}>{loading ? 'Researching…' : accessToken ? 'Start research' : 'Sign in first'}</button></div>
+              <div><span>Try “Compare AMD and Intel after earnings.”</span><button type="submit" disabled={loading || !question.trim()}>{loading ? 'Researching…' : 'Start research'}</button></div>
             </form>
             {clarification && (
               <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
