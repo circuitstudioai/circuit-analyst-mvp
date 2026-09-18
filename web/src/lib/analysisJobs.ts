@@ -1,15 +1,27 @@
 import { buildAnalysisProgress, AnalysisJobStatus } from './analysisProgress'
 import { serviceClient } from './supabase'
 
+export class AnalysisJobRateLimitError extends Error {
+  constructor(public readonly retryAfter: number) {
+    super('A research job is already running or too many jobs were requested. Please try again shortly.')
+    this.name = 'AnalysisJobRateLimitError'
+  }
+}
+
 export async function createAnalysisJob(userId: string, requestPayload: Record<string, unknown>) {
   const sb = serviceClient()
   if (!sb) throw new Error('Supabase is not configured')
-  const { data, error } = await sb.from('analysis_jobs').insert({
-    user_id: userId,
-    request_payload: requestPayload,
-  }).select('id').single()
-  if (error || !data) throw new Error(error?.message || 'Could not queue analysis')
-  return String(data.id)
+  const { data, error } = await sb.rpc('create_analysis_job_if_allowed', {
+    p_user_id: userId,
+    p_request_payload: requestPayload,
+    p_max_jobs_per_hour: 6,
+  })
+  if (error) throw new Error(error.message || 'Could not queue analysis')
+  const result = data?.[0]
+  if (!result?.allowed || !result.job_id) {
+    throw new AnalysisJobRateLimitError(Math.max(1, Number(result?.retry_after_seconds) || 15))
+  }
+  return String(result.job_id)
 }
 
 export async function analysisJobForUser(userId: string, jobId: string) {

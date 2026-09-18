@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { requireBetaUser } from '@/lib/betaAuth'
-import { analysisJobForUser, createAnalysisJob, updateAnalysisJob } from '@/lib/analysisJobs'
+import { AnalysisJobRateLimitError, analysisJobForUser, createAnalysisJob, updateAnalysisJob } from '@/lib/analysisJobs'
 import { resolveQuestionCompanies } from '@/lib/companyResolution'
 
 export const maxDuration = 300
@@ -35,7 +35,18 @@ export async function POST(req: NextRequest) {
     requestPayload = { ...requestPayload, watchlist: suppliedSymbols }
   }
 
-  const jobId = await createAnalysisJob(auth.user.id, requestPayload)
+  let jobId: string
+  try {
+    jobId = await createAnalysisJob(auth.user.id, requestPayload)
+  } catch (error) {
+    if (error instanceof AnalysisJobRateLimitError) {
+      return NextResponse.json({ error: error.message }, {
+        status: 429,
+        headers: { 'retry-after': String(error.retryAfter) },
+      })
+    }
+    throw error
+  }
   const authorization = req.headers.get('authorization') || ''
   const analyzeUrl = new URL('/api/analyze', req.url)
 

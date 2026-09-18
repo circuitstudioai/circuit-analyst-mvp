@@ -4,3 +4,5 @@ __pycache__/
 dist/
 supabase/.temp/
 web/supabase/.temp/
+.vercel
+.env*

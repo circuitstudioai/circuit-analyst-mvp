@@ -19,10 +19,15 @@ export async function requireBetaUser(req: NextRequest): Promise<
     return { response: NextResponse.json({ error: 'Your session expired. Sign in again.' }, { status: 401 }) }
   }
   const { data: profile } = await supabase.from('profiles').select('beta_role').eq('id', data.user.id).maybeSingle()
-  const access = alphaAccessDecision(data.user.email, process.env.ALPHA_ALLOWED_EMAILS, profile?.beta_role)
+  const access = alphaAccessDecision(
+    data.user.email,
+    process.env.ALPHA_ALLOWED_EMAILS,
+    profile?.beta_role,
+    process.env.OPEN_SIGNUP_ENABLED === 'true',
+  )
   if (!access.allowed) {
     return { response: NextResponse.json({
-      error: 'This private alpha is invite-only. Contact support if you expected access.',
+      error: 'New signups are temporarily paused. Contact support if you expected access.',
       code: 'alpha_access_required',
     }, { status: 403 }) }
   }
