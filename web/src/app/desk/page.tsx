@@ -393,6 +393,7 @@ export default function HomePage() {
             onToken={setAccessToken}
             onLoadWatchlist={loadUserWatchlist}
             onPickSymbol={pickUniverseSymbol}
+            showOnboarding={Boolean(result)}
             compact
           />
           <div className={styles.railHeading}>

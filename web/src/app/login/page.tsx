@@ -14,5 +14,5 @@ export default function LoginPage() {
     const next = new URLSearchParams(window.location.search).get('next')
     router.replace(next?.startsWith('/') && !next.startsWith('//') ? next : '/desk')
   }, [router, token])
-  return <main className={styles.loginPage}><section><p className={styles.kicker}>Private beta</p><h1>Welcome to Market Desk.</h1><p>Sign in securely to save your watchlist, run research, and revisit prior work.</p><BetaAccess onToken={setToken} onLoadWatchlist={ignore} onPickSymbol={ignore} /></section></main>
+  return <main className={styles.loginPage}><section><p className={styles.kicker}>Private alpha</p><h1>Sign in to continue.</h1><p>Your question is saved. We’ll return you to the research desk after sign-in.</p><BetaAccess onToken={setToken} onLoadWatchlist={ignore} onPickSymbol={ignore} showOnboarding={false} /></section></main>
 }

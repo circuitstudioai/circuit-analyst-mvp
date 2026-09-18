@@ -25,11 +25,13 @@ export function BetaAccess({
   onLoadWatchlist,
   onPickSymbol,
   compact = false,
+  showOnboarding = true,
 }: {
   onToken: (token: string | null) => void
   onLoadWatchlist: (symbols: string[]) => void
   onPickSymbol: (symbol: string) => void
   compact?: boolean
+  showOnboarding?: boolean
 }) {
   const [session, setSession] = useState<Session | null>(null)
   const [email, setEmail] = useState('')
@@ -104,7 +106,7 @@ export function BetaAccess({
       email: email.trim(),
       options: { emailRedirectTo: `${window.location.origin}/login` },
     })
-    setMessage(error ? error.message : 'Check your inbox for the beta sign-in link.')
+    setMessage(error ? error.message : 'Check your inbox for the sign-in link.')
   }
 
   async function signInPresenter(event: FormEvent) {
@@ -155,7 +157,7 @@ export function BetaAccess({
     <div className={`${styles.betaAccess} ${compact ? styles.compactAuthController : ''}`}>
       <div className={styles.betaHeader}>
         <div>
-          <span className={styles.betaEyebrow}>Private beta · 50 seats</span>
+          <span className={styles.betaEyebrow}>Private alpha</span>
           <strong>{session?.user.email || 'Sign in to start research'}</strong>
         </div>
         {session && <button type="button" className={styles.textButton} onClick={signOut}>Sign out</button>}
@@ -211,7 +213,7 @@ export function BetaAccess({
         </div>
       )}
 
-      {!compact && <div className={styles.universeRail}>
+      {!compact && session && <div className={styles.universeRail}>
         <span>Top universe</span>
         {universe.map((item) => (
           <button key={item.symbol} type="button" title={item.company_name} onClick={() => onPickSymbol(item.symbol)}>
@@ -220,12 +222,12 @@ export function BetaAccess({
         ))}
       </div>}
 
-      {session && needsOnboarding && (
+      {session && needsOnboarding && showOnboarding && (
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
           <form className={styles.onboardingCard} onSubmit={saveOnboarding}>
             <span className={styles.betaEyebrow}>Two-minute setup · 1 of 1</span>
             <h2 id="onboarding-title">Tell us how you invest.</h2>
-            <p>These four answers help us tailor the beta and evaluate whether it is useful.</p>
+            <p>These four answers help us tailor the alpha and evaluate whether it is useful.</p>
 
             <label>
               Your investing experience
@@ -276,7 +278,7 @@ export function BetaAccess({
           <form className={styles.onboardingCard} onSubmit={saveExitSurvey}>
             <span className={styles.betaEyebrow}>Two-week checkpoint</span>
             <h2 id="exit-survey-title">How useful was Market Desk?</h2>
-            <p>Your answers help us decide what to improve after this beta.</p>
+            <p>Your answers help us decide what to improve after this alpha.</p>
             <label>
               How would you feel if Market Desk disappeared?
               <select value={exitSurvey.lossReaction} onChange={(event) => setExitSurvey({ ...exitSurvey, lossReaction: event.target.value })}>

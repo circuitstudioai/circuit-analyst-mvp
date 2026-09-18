@@ -2,6 +2,8 @@
 
 ## Release gate
 
+Production URL: `https://circuit-analyst.vercel.app`
+
 1. Apply pending Supabase migrations.
 2. Set `ALPHA_ALLOWED_EMAILS` in Vercel Production and Preview to the approved five testers (plus operators where needed).
 3. Confirm `GEMINI_API_KEY`, `GEMINI_DEEP_MODEL`, Supabase URL, publishable key, and service-role key are present.
@@ -9,6 +11,10 @@
 5. Run `npm run smoke:beta` against production and save its successful JSON output.
 6. Run `npm run eval:finance:live` and save the eight-case JSON baseline.
 7. Verify `/api/admin/ops?hours=24` and `/api/admin/validation?cohort=alpha-2026-09` as an admin.
+
+The Vercel project is connected to `circuitstudioai/circuit-analyst-mvp` with
+`web` as its root directory and `main` as its production branch. A merge to
+`main` should therefore create the production deployment automatically.
 
 Do not invite testers when the smoke fails, any live evaluation returns a technical
 fallback, provider authentication is failing, or the deployment lacks the private
