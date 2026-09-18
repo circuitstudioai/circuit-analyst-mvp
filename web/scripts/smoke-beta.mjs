@@ -54,8 +54,6 @@ try {
   const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
   if (createError || !created.user) throw new Error(createError?.message || 'Test user creation failed')
   userId = created.user.id
-  const { error: roleError } = await admin.from('profiles').update({ beta_role: 'admin' }).eq('id', userId)
-  if (roleError) throw new Error(roleError.message)
 
   const { data: signedIn, error: signInError } = await publicClient.auth.signInWithPassword({ email, password })
   if (signInError || !signedIn.session) throw new Error(signInError?.message || 'Test sign-in failed')
@@ -134,6 +132,7 @@ try {
     follow_up_job: followUpJob.id,
     reloaded_messages: conversation.body.messages.length,
     onboarding: true,
+    open_signup_user: true,
     product_event: reportOpened.body.ok,
     feedback: feedback.body.ok,
     user_runs: runs.body.runs.length,

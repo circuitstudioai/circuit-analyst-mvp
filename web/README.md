@@ -19,7 +19,9 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `GEMINI_DEEP_MODEL`: optional primary grounded-research model (defaults to `gemini-3.6-flash`).
 - `GEMINI_FALLBACK_MODEL`: optional secondary Gemini model used after bounded retries on quota, timeout, network, or provider failures.
 - `GEMINI_MODEL`: overrides the Gemini model (defaults to stable `gemini-3.5-flash`).
-- `ALPHA_ALLOWED_EMAILS`: required private-alpha allowlist, as comma/whitespace-separated emails. Use `*` only for local or disposable preview testing; admins always retain access.
+- `OPEN_SIGNUP_ENABLED`: set to `true` to let any email-verified user access the product. Removing it or setting it to `false` is the production signup kill switch.
+- `ALPHA_ALLOWED_EMAILS`: optional comma/whitespace-separated access list used while open signup is paused; admins always retain access.
+- `PUBLIC_APP_URL`: permanent origin used in magic-link redirects (production: `https://circuit-analyst.vercel.app`).
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
 
@@ -88,10 +90,12 @@ real Gemini configuration. Set `LIVE_EVAL_BASE_URL` plus the Supabase variables,
 then redirect the JSON output to a dated baseline file. The runner creates a
 temporary admin evaluator per case and removes it afterward.
 
-## Alpha release operations
+## Early-access operations
 
-The private alpha is controlled by `ALPHA_ALLOWED_EMAILS`; authentication alone
-does not grant product access. The migration `20260916183000_alpha_release.sql`
+Open signup is controlled by `OPEN_SIGNUP_ENABLED`; email verification is still
+required, and `ALPHA_ALLOWED_EMAILS` remains available for controlled access when
+the kill switch is off. Magic-link requests and background-job creation are
+database-throttled before provider work begins. The migration `20260916183000_alpha_release.sql`
 creates the September 17–30 supervised cohort with five initial seats and closes
 the expiring beta cohort. Newly onboarded invitees join the newest current cohort.
 

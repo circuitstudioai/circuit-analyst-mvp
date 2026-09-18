@@ -99,14 +99,15 @@ export function BetaAccess({
 
   async function requestMagicLink(event: FormEvent) {
     event.preventDefault()
-    const supabase = getBrowserSupabase()
-    if (!supabase || !email.trim()) return
+    if (!email.trim()) return
     setMessage('Sending secure link…')
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/login` },
+    const response = await fetch('/api/auth/magic-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
     })
-    setMessage(error ? error.message : 'Check your inbox for the sign-in link.')
+    const result = await response.json().catch(() => ({})) as { error?: string }
+    setMessage(response.ok ? 'Check your inbox for the sign-in link.' : result.error || 'Could not send the sign-in email.')
   }
 
   async function signInPresenter(event: FormEvent) {
@@ -157,7 +158,7 @@ export function BetaAccess({
     <div className={`${styles.betaAccess} ${compact ? styles.compactAuthController : ''}`}>
       <div className={styles.betaHeader}>
         <div>
-          <span className={styles.betaEyebrow}>Private alpha</span>
+          <span className={styles.betaEyebrow}>Early access</span>
           <strong>{session?.user.email || 'Sign in to start research'}</strong>
         </div>
         {session && <button type="button" className={styles.textButton} onClick={signOut}>Sign out</button>}
