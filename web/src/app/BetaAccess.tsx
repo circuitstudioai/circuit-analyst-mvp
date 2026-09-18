@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
-import Link from 'next/link'
 import styles from './page.module.css'
 
 type UniverseSymbol = { symbol: string; company_name: string; rank: number }
@@ -153,20 +152,17 @@ export function BetaAccess({
   }
 
   return (
-    <div className={styles.betaAccess}>
+    <div className={`${styles.betaAccess} ${compact ? styles.compactAuthController : ''}`}>
       <div className={styles.betaHeader}>
         <div>
           <span className={styles.betaEyebrow}>Private beta · 50 seats</span>
-          <strong>{session?.user.email || 'Sign in to run the desk'}</strong>
+          <strong>{session?.user.email || 'Sign in to start research'}</strong>
         </div>
         {session && <button type="button" className={styles.textButton} onClick={signOut}>Sign out</button>}
       </div>
 
       {!session && compact ? (
-        <div className={styles.compactSignIn}>
-          <p>Sign in to ask a research question and save your history.</p>
-          <Link href="/login">Continue to sign in</Link>
-        </div>
+        null
       ) : !session ? (
         <form className={`${styles.authForm} ${authMode === 'presenter' ? styles.presenterAuthForm : ''}`} onSubmit={authMode === 'presenter' ? signInPresenter : requestMagicLink}>
           <input
@@ -228,8 +224,8 @@ export function BetaAccess({
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
           <form className={styles.onboardingCard} onSubmit={saveOnboarding}>
             <span className={styles.betaEyebrow}>Two-minute setup · 1 of 1</span>
-            <h2 id="onboarding-title">Shape your decision desk.</h2>
-            <p>Four quick choices help us measure whether Market Desk is genuinely useful—not just interesting.</p>
+            <h2 id="onboarding-title">Tell us how you invest.</h2>
+            <p>These four answers help us tailor the beta and evaluate whether it is useful.</p>
 
             <label>
               Your investing experience
@@ -267,7 +263,7 @@ export function BetaAccess({
               </select>
             </label>
             <button type="submit" disabled={onboardingState === 'saving'}>
-              {onboardingState === 'saving' ? 'Saving…' : 'Build my desk'}
+              {onboardingState === 'saving' ? 'Saving…' : 'Save and continue'}
             </button>
             {onboardingState === 'error' && <p className={styles.onboardingError}>Could not save your setup. Please try again.</p>}
           </form>
@@ -279,8 +275,8 @@ export function BetaAccess({
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="exit-survey-title">
           <form className={styles.onboardingCard} onSubmit={saveExitSurvey}>
             <span className={styles.betaEyebrow}>Two-week checkpoint</span>
-            <h2 id="exit-survey-title">One honest verdict.</h2>
-            <p>Your answer decides what we build next. This is product research, not a marketing survey.</p>
+            <h2 id="exit-survey-title">How useful was Market Desk?</h2>
+            <p>Your answers help us decide what to improve after this beta.</p>
             <label>
               How would you feel if Market Desk disappeared?
               <select value={exitSurvey.lossReaction} onChange={(event) => setExitSurvey({ ...exitSurvey, lossReaction: event.target.value })}>

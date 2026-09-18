@@ -11,6 +11,12 @@
 .site-nav nav a { padding: 9px 13px; border-radius: 999px; color: #536064; text-decoration: none; font-size: 14px; font-weight: 700; }
 .site-nav nav a:hover, .site-nav nav a[aria-current="page"] { background: #e8e4d9; color: #101a1d; }
 .site-signin { justify-self: end; padding: 10px 16px; border: 1px solid #101a1d; border-radius: 999px; color: #101a1d; text-decoration: none; font-size: 14px; font-weight: 850; }
+.site-account { position: relative; justify-self: end; }
+.site-account summary { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #101a1d; color: #fffdf5; font-weight: 900; cursor: pointer; list-style: none; }
+.site-account summary::-webkit-details-marker { display: none; }
+.site-account > div { position: absolute; z-index: 20; top: 46px; right: 0; display: grid; min-width: 220px; gap: 10px; border: 1px solid rgba(16, 26, 29, .16); border-radius: 12px; background: #fffdf5; box-shadow: 0 14px 34px rgba(16, 26, 29, .14); padding: 12px; }
+.site-account span { overflow: hidden; color: #526064; font-size: 12px; text-overflow: ellipsis; }
+.site-account button { border: 0; border-radius: 8px; background: #101a1d; color: #fffdf5; padding: 9px 12px; font-weight: 800; cursor: pointer; }
 @media (max-width: 680px) { .site-nav { width: min(100% - 24px, 1380px); grid-template-columns: 1fr auto; } .site-brand strong { display: none; } .site-nav nav { order: 3; grid-column: 1 / -1; justify-content: space-between; border-top: 1px solid rgba(16,26,29,.1); padding: 7px 0; } .site-nav nav a { padding: 8px 9px; font-size: 12px; } }
 
 html {

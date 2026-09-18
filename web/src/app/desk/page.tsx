@@ -1,25 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import styles from '../page.module.css'
 import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from '../BetaAccess'
 import { evidenceWorkspace } from '@/lib/analystWorkspace'
+import { contextualVisual, priceChange } from '@/lib/contextualVisual'
 
-const samples = [
-  ['NVDA'],
-  ['JPM'],
-  ['COST'],
-  ['NVDA', 'AMD'],
-  ['HIMS', 'OSCR'],
-]
-
-type SymbolSearchResult = {
+type CompanyChoice = {
   symbol: string
   name: string
   exchange: string
   type: string
 }
+
+type CompanyClarification = { phrase: string; choices: CompanyChoice[] }
 
 type FeedbackDraft = {
   helpful: boolean
@@ -88,10 +84,11 @@ function researchAction(signal: SignalRow) {
 }
 
 export default function HomePage() {
-  const [question, setQuestion] = useState('How does the evidence look now?')
+  const router = useRouter()
+  const [question, setQuestion] = useState('')
   const [watchlistText, setWatchlistText] = useState(() => {
-    if (typeof window === 'undefined') return 'NVDA'
-    return new URLSearchParams(window.location.search).get('tickers') || 'NVDA'
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('tickers') || ''
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
@@ -104,9 +101,7 @@ export default function HomePage() {
   const [generalFeedbackOpen, setGeneralFeedbackOpen] = useState(false)
   const [generalComment, setGeneralComment] = useState('')
   const [generalFeedbackState, setGeneralFeedbackState] = useState<'idle' | 'sending' | 'saved' | 'error'>('idle')
-  const [symbolQuery, setSymbolQuery] = useState('')
-  const [symbolResults, setSymbolResults] = useState<SymbolSearchResult[]>([])
-  const [symbolSearchState, setSymbolSearchState] = useState<'idle' | 'searching' | 'ready'>('idle')
+  const [clarification, setClarification] = useState<CompanyClarification | null>(null)
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null)
   const [followUp, setFollowUp] = useState<FollowUp>('summary')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -116,8 +111,16 @@ export default function HomePage() {
   const [jobProgress, setJobProgress] = useState<JobProgress | null>(null)
   const openedRun = useRef<string | null>(null)
 
+  useEffect(() => {
+    const pendingQuestion = window.sessionStorage.getItem('pending-research-question')
+    if (!pendingQuestion) return
+    const timer = window.setTimeout(() => setQuestion(pendingQuestion), 0)
+    window.sessionStorage.removeItem('pending-research-question')
+    return () => window.clearTimeout(timer)
+  }, [])
+
   const loadUserWatchlist = useCallback((symbols: string[]) => {
-    setWatchlistText((current) => current === 'NVDA' ? symbols.slice(0, 2).join(', ') : current)
+    setWatchlistText((current) => current || symbols.slice(0, 2).join(', '))
   }, [])
 
   const pickUniverseSymbol = useCallback((symbol: string) => {
@@ -131,34 +134,6 @@ export default function HomePage() {
     () => watchlistText.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
     [watchlistText]
   )
-
-  useEffect(() => {
-    const query = symbolQuery.trim()
-    if (!query) return
-    const controller = new AbortController()
-    const timer = window.setTimeout(async () => {
-      setSymbolSearchState('searching')
-      try {
-        const response = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
-        const data = await response.json()
-        setSymbolResults(Array.isArray(data?.items) ? data.items : [])
-      } catch {
-        if (!controller.signal.aborted) setSymbolResults([])
-      } finally {
-        if (!controller.signal.aborted) setSymbolSearchState('ready')
-      }
-    }, 250)
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [symbolQuery])
-
-  function addSymbol(symbol: string) {
-    pickUniverseSymbol(symbol)
-    setSymbolQuery('')
-    setSymbolResults([])
-  }
 
   const topSetups = useMemo(() => {
     if (!result) return []
@@ -177,6 +152,8 @@ export default function HomePage() {
   const visibleRuns = accessToken ? recentRuns : []
   const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
   const evidencePanel = activeSignal ? evidenceWorkspace(activeSignal) : null
+  const activeIntent = result?.intent || activeSignal?.deepAnalysis?.intent
+  const evidenceVisual = activeSignal ? contextualVisual(activeIntent, activeSignal) : null
   const resumableRunId = result?.outcome?.researchStatus !== 'complete' ? result?.saved?.runId : undefined
 
   async function fetchRecentRuns() {
@@ -256,14 +233,16 @@ export default function HomePage() {
     })
   }, [result, trackEvent])
 
-  async function runAnalysis(symbols = watchlist, resumeRunId?: number, askedQuestion = question) {
+  async function runAnalysis(symbols: string[] = [], resumeRunId?: number, askedQuestion = question) {
     if (!accessToken) {
-      setError('Sign in with a beta magic link to run analysis.')
+      if (askedQuestion.trim()) window.sessionStorage.setItem('pending-research-question', askedQuestion.trim())
+      router.push('/login?next=/desk')
       return
     }
     setLoading(true)
     setJobProgress({ status: 'queued', currentStage: 'queued', completedStages: [], percent: 0, terminal: false })
     setError('')
+    setClarification(null)
     try {
       const res = await fetch('/api/analysis-jobs', {
         method: 'POST',
@@ -271,7 +250,13 @@ export default function HomePage() {
         body: JSON.stringify({ watchlist: symbols, question: askedQuestion, resumeRunId, threadId: conversationId }),
       })
       const queued = await res.json()
-      if (!res.ok) throw new Error(queued?.error || 'Analyze failed')
+      if (res.status === 409 && queued?.resolution?.status === 'ambiguous') {
+        setClarification({ phrase: queued.resolution.phrase, choices: queued.resolution.choices })
+        return
+      }
+      if (!res.ok) throw new Error(queued?.error || 'Could not start research.')
+      const resolvedSymbols = Array.isArray(queued.symbols) ? queued.symbols : symbols
+      if (resolvedSymbols.length) setWatchlistText(resolvedSymbols.join(', '))
       let data: AnalyzeResponse | null = null
       for (let attempt = 0; attempt < 360; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000))
@@ -311,7 +296,7 @@ export default function HomePage() {
       void fetchRecentRuns()
       void refreshConversations(data.conversationId)
       const url = new URL(window.location.href)
-      url.searchParams.set('tickers', symbols.join(','))
+      if (data.watchlist.length) url.searchParams.set('tickers', data.watchlist.join(','))
       window.history.replaceState(null, '', url)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed')
@@ -339,6 +324,9 @@ export default function HomePage() {
     setMessages([])
     setResult(null)
     setFollowUp('summary')
+    setQuestion('')
+    setClarification(null)
+    setError('')
   }
 
   function beginFeedback(signal: SignalRow, helpful: boolean) {
@@ -385,11 +373,6 @@ export default function HomePage() {
     if (response.ok) setGeneralComment('')
   }
 
-  function loadSample(symbols: string[]) {
-    setWatchlistText(symbols.join(', '))
-    void runAnalysis(symbols)
-  }
-
   function copyReport() {
     if (!result) return
     const lines = result.signals.map((s) => {
@@ -404,95 +387,19 @@ export default function HomePage() {
 
   return (
     <main className={styles.desk}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <p className={styles.kicker}>Circuit Studio AI</p>
-          <h1>Market research, in plain English.</h1>
-          <p>
-            Ask about a company. Market Desk explains what the evidence shows,
-            what could go wrong, and what to watch next.
-          </p>
-        </div>
-
-        <div className={styles.console}>
+      <section className={styles.workspaceShell}>
+        <aside className={styles.conversationRail} aria-label="Research conversations">
           <BetaAccess
             onToken={setAccessToken}
             onLoadWatchlist={loadUserWatchlist}
             onPickSymbol={pickUniverseSymbol}
             compact
           />
-          <div className={styles.consoleTop}>
-            <span>Evidence-led beta</span>
-            <span>{accessToken ? 'Authenticated' : 'Read-only preview'}</span>
-          </div>
-          <label className={styles.label}>Which company should we research?</label>
-          <div className={styles.symbolSearch}>
-            <input
-              value={symbolQuery}
-              onChange={(event) => {
-                const next = event.target.value
-                setSymbolQuery(next)
-                if (!next.trim()) {
-                  setSymbolResults([])
-                  setSymbolSearchState('idle')
-                }
-              }}
-              placeholder="Type a company name or ticker — e.g. Nvidia"
-              aria-label="Search live market symbols"
-              autoComplete="off"
-            />
-            <span>{symbolSearchState === 'searching' ? 'Searching…' : 'Live symbol lookup'}</span>
-            {symbolQuery && symbolSearchState === 'ready' && (
-              <div className={styles.symbolResults} role="listbox" aria-label="Symbol search results">
-                {symbolResults.length ? symbolResults.map((item) => (
-                  <button key={`${item.symbol}-${item.exchange}`} type="button" onClick={() => addSymbol(item.symbol)}>
-                    <strong>{item.symbol}</strong>
-                    <span>{item.name}</span>
-                    <small>{item.exchange} · {item.type}</small>
-                  </button>
-                )) : <p>No supported equity or ETF found.</p>}
-              </div>
-            )}
-          </div>
-          <textarea
-            value={watchlistText}
-            onChange={(e) => setWatchlistText(e.target.value)}
-            rows={2}
-            className={styles.textarea}
-            aria-label="Ticker watchlist"
-          />
-          <label className={styles.label} htmlFor="research-question">What do you want to understand?</label>
-          <textarea
-            id="research-question"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            rows={3}
-            className={styles.questionInput}
-            placeholder="For example: What are the biggest risks? Is the valuation supported? What changed after earnings?"
-            maxLength={500}
-          />
-          <p className={styles.inputHint}>Ask naturally. The analysts will choose evidence based on your question.</p>
-          <div className={styles.sampleRow}>
-            {samples.map((symbols) => (
-              <button key={symbols.join(',')} onClick={() => loadSample(symbols)} className={styles.chip}>
-                {symbols.length === 1 ? symbols[0] : `${symbols.length} names`}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => runAnalysis()} disabled={loading || !accessToken} className={styles.button}>
-            {loading ? 'Reading the evidence…' : accessToken ? 'Help me understand' : 'Sign in to ask'}
-          </button>
-          {error && <p className={styles.error}>{error}</p>}
-        </div>
-      </section>
-
-      <section className={styles.workspaceShell}>
-        <aside className={styles.conversationRail} aria-label="Research conversations">
           <div className={styles.railHeading}>
-            <div><p className={styles.kicker}>Research desk</p><strong>Conversations</strong></div>
+            <div><p className={styles.kicker}>Saved work</p><strong>Recent research</strong></div>
             <button type="button" onClick={newConversation} disabled={!accessToken} aria-label="Start a new conversation">+</button>
           </div>
-          <p className={styles.railIntro}>Each thread keeps its question, companies, and verified research context together.</p>
+          <p className={styles.railIntro}>Open a previous question or start a new one.</p>
           <nav className={styles.threadList} aria-label="Saved research conversations">
             {threads.length ? threads.map((thread) => (
               <button
@@ -507,12 +414,12 @@ export default function HomePage() {
               </button>
             )) : <div className={styles.emptyRail}><strong>No saved threads yet</strong><span>Your first question starts one.</span></div>}
           </nav>
-          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Analyst connected' : 'Sign in to begin'}</span></div>
+          <div className={styles.railStatus}><i className={accessToken ? styles.statusLive : undefined}/><span>{accessToken ? 'Ready' : 'Saved research appears here'}</span></div>
         </aside>
 
         <section className={styles.conversation} aria-live="polite">
         <div className={styles.conversationHeader}>
-          <div><span>{conversationId ? 'Continuing research' : 'New research thread'}</span><strong>{activeSignal ? `${activeSignal.symbol} analyst room` : 'Ask Circuit'}</strong></div>
+          <div><span>{conversationId ? 'Saved research' : 'New question'}</span><strong>{activeSignal ? `${activeSignal.symbol} research` : 'What do you want to understand?'}</strong></div>
           {result?.asOf && <time dateTime={result.asOf}>Updated {new Date(result.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>}
         </div>
         {messages.length > 0 && (
@@ -521,15 +428,39 @@ export default function HomePage() {
           </div>
         )}
         <ResearchJourney loading={loading} result={result} progress={jobProgress} />
-        {!activeSignal ? (
-          <div className={styles.welcomeMessage}>
-            <span className={styles.assistantMark}>C</span>
-            <div>
-              <strong>What would you like to understand?</strong>
-              <p>Start with one company. I’ll give you a short answer first, then you can explore the risks, evidence, or valuation.</p>
+        {!activeSignal && !loading ? (
+          <section className={styles.questionCard}>
+            <div className={styles.questionCardIntro}>
+              <span className={styles.assistantMark}>C</span>
+              <div><h1>Ask about a company.</h1><p>Start with the decision or concern you have. Include a company name or ticker.</p></div>
             </div>
-          </div>
-        ) : (
+            <form className={styles.primaryComposer} onSubmit={(event) => { event.preventDefault(); void runAnalysis() }}>
+              <label htmlFor="research-question">Your question</label>
+              <textarea
+                id="research-question"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                rows={5}
+                placeholder="What are Nvidia’s biggest risks?"
+                maxLength={500}
+                autoFocus
+              />
+              <div><span>Try “Compare AMD and Intel after earnings.”</span><button type="submit" disabled={loading || !question.trim()}>{loading ? 'Researching…' : 'Start research'}</button></div>
+            </form>
+            {clarification && (
+              <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
+                <strong>Which {clarification.phrase} did you mean?</strong>
+                <p>Choose a company and I’ll continue with your question.</p>
+                <div>{clarification.choices.map((choice) => (
+                  <button key={`${choice.symbol}-${choice.exchange}`} type="button" onClick={() => void runAnalysis([choice.symbol])}>
+                    <b>{choice.symbol}</b><span>{choice.name}</span><small>{choice.exchange}</small>
+                  </button>
+                ))}</div>
+              </div>
+            )}
+            {error && <p className={styles.error}>{error}</p>}
+          </section>
+        ) : activeSignal ? (
           <>
             {result && result.signals.length > 1 && (
               <div className={styles.companyTabs} aria-label="Analyzed companies">
@@ -543,8 +474,8 @@ export default function HomePage() {
             <article className={styles.answerCard}>
               {result?.outcome && (
                 <div className={`${styles.outcomeBanner} ${styles[`outcome_${result.outcome.researchStatus}`]}`}>
-                  <strong>{result.outcome.researchStatus === 'complete' ? `AI research complete — ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Partial research result' : 'Technical snapshot only'}</strong>
-                  <span>{result.outcome.researchStatus === 'complete' ? 'Research, challenge, synthesis, and citation checks completed.' : result.outcome.error || 'Some research stages were unavailable.'}</span>
+                  <strong>{result.outcome.researchStatus === 'complete' ? `Research complete · ${activeSignal.deepAnalysis?.sources.length || 0} sources` : result.outcome.researchStatus === 'partial' ? 'Some research is unavailable' : 'Price and trend data only'}</strong>
+                  <span>{result.outcome.researchStatus === 'complete' ? 'Sources and counterarguments were checked.' : result.outcome.error || 'Part of the research could not be completed.'}</span>
                 </div>
               )}
               {resumableRunId && result && (
@@ -555,7 +486,7 @@ export default function HomePage() {
               <div className={styles.answerLead}>
                 <span className={styles.assistantMark}>C</span>
                 <div>
-                  <p className={styles.kicker}>Final research decision</p>
+                  <p className={styles.kicker}>Current view</p>
                   <h2>{researchAction(activeSignal)}</h2>
                 </div>
                 <span className={styles.viewBadge}>{evidenceView(activeSignal)}</span>
@@ -568,7 +499,7 @@ export default function HomePage() {
 
               {followUp === 'summary' && activeSignal.deepAnalysis?.status === 'complete' && <DeepResearchBrief signal={activeSignal} />}
               {followUp === 'summary' && activeSignal.deepAnalysis?.status !== 'complete' && <>
-                <div className={styles.fallbackNotice}><strong>Fast fallback shown</strong><span>Deep company research was unavailable. This view uses price and trend evidence only.</span></div>
+                <div className={styles.fallbackNotice}><strong>Limited result</strong><span>Company research was unavailable, so this answer uses price and trend data only.</span></div>
                 <p className={styles.answerText}>{activeSignal.aiExplanation || activeSignal.thesis}</p>
                 <div className={styles.answerGrid}>
                   <div><span>Why <InfoTip label="How the recent trend is measured" text="We compare the stock’s average price over about one month with its average over about five months. Exact values remain in Advanced evidence." /></span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
@@ -600,12 +531,12 @@ export default function HomePage() {
               <p className={styles.answerCaveat}>Educational research support only. The evidence can be incomplete or wrong; verify it before making financial decisions.</p>
             </article>
           </>
-        )}
+        ) : null}
         </section>
 
-        <aside className={styles.evidenceRail} aria-label="Contextual evidence workspace">
+        <aside className={styles.evidenceRail} aria-label="Evidence for this answer">
           <div className={styles.railHeading}>
-            <div><p className={styles.kicker}>Live context</p><strong>Evidence</strong></div>
+            <div><p className={styles.kicker}>For this answer</p><strong>Evidence</strong></div>
             {evidencePanel && <span className={styles.evidenceTicker}>{evidencePanel.symbol}</span>}
           </div>
           {evidencePanel && activeSignal ? (
@@ -615,7 +546,7 @@ export default function HomePage() {
                 <div><span>Confidence</span><strong>{evidencePanel.confidence}</strong></div>
                 <div><span>Freshness</span><strong>{evidencePanel.freshness}</strong></div>
               </div>
-              <PriceJourney signal={activeSignal} compact />
+              {evidenceVisual && <ContextualEvidenceVisual visual={evidenceVisual} signal={activeSignal} signals={result?.signals || [activeSignal]} />}
               <section className={styles.railSection}>
                 <div className={styles.railSectionTitle}><strong>Source file</strong><span>{evidencePanel.sourceCount}</span></div>
                 {evidencePanel.sources.length ? evidencePanel.sources.slice(0, 5).map((source, index) => (
@@ -639,7 +570,7 @@ export default function HomePage() {
             </>
           ) : (
             <div className={styles.emptyEvidence}>
-              <span>⌁</span><strong>Your evidence workspace is ready</strong><p>Ask a question and the relevant sources, chart, and evidence signals will appear here.</p>
+              <span>⌁</span><strong>Sources and charts appear here</strong><p>Ask a question to see the data and sources used in the answer.</p>
             </div>
           )}
         </aside>
@@ -659,8 +590,8 @@ export default function HomePage() {
       <section className={styles.ops}>
         <div className={styles.topSetups}>
           <div className={styles.panelHeader}>
-            <p className={styles.kicker}>Top setups</p>
-            <strong>{result ? `${topSetups.length} ranked` : 'Awaiting run'}</strong>
+            <p className={styles.kicker}>Ranked results</p>
+            <strong>{result ? `${topSetups.length} shown` : 'No research yet'}</strong>
           </div>
           <div className={styles.setupGrid}>
             {(topSetups.length ? topSetups : placeholderSetups()).map((signal) => (
@@ -675,8 +606,8 @@ export default function HomePage() {
 
         <div className={styles.runLedger}>
           <div className={styles.panelHeader}>
-            <p className={styles.kicker}>Run ledger</p>
-            <strong>{visibleRuns.length ? `${visibleRuns.length} stored` : 'Storage idle'}</strong>
+            <p className={styles.kicker}>Saved runs</p>
+            <strong>{visibleRuns.length ? `${visibleRuns.length} saved` : 'None saved'}</strong>
           </div>
           {visibleRuns.length ? (
             <ol>
@@ -688,7 +619,7 @@ export default function HomePage() {
               ))}
             </ol>
           ) : (
-            <p>Supabase is not connected on this deployment.</p>
+            <p>No saved runs are available.</p>
           )}
         </div>
 
@@ -708,8 +639,8 @@ export default function HomePage() {
       <section className={styles.results}>
         <div className={styles.resultHeader}>
           <div>
-            <p className={styles.kicker}>Multi-engine control desk</p>
-            <h2>{deskConsensus.length ? `${deskConsensus.length} consensus views` : 'Awaiting independent engines'}</h2>
+            <p className={styles.kicker}>Model comparison</p>
+            <h2>{deskConsensus.length ? `${deskConsensus.length} combined views` : 'No model comparison yet'}</h2>
           </div>
           <span className={styles.meta}>{deskEngines.length} engine outputs</span>
         </div>
@@ -739,15 +670,15 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div className={styles.empty}><strong>No synthetic consensus.</strong><span>The desk will show agreement only after at least two independent engine outputs arrive for the same run and ticker.</span></div>
+          <div className={styles.empty}><strong>No comparison available.</strong><span>This section needs results from at least two independent models for the same company.</span></div>
         )}
       </section>
 
       <section className={styles.results}>
         <div className={styles.resultHeader}>
           <div>
-            <p className={styles.kicker}>Analyst report</p>
-            <h2>{result ? `${result.signals.length} symbols scored` : 'Run a watchlist to generate the desk'}</h2>
+            <p className={styles.kicker}>Detailed results</p>
+            <h2>{result ? `${result.signals.length} ${result.signals.length === 1 ? 'company' : 'companies'}` : 'Ask a question to begin'}</h2>
           </div>
           <div className={styles.actions}>
             {result?.asOf && <span className={styles.meta}>As of {new Date(result.asOf).toLocaleString()}</span>}
@@ -759,8 +690,8 @@ export default function HomePage() {
 
         {!result ? (
           <div className={styles.empty}>
-            <strong>Try NVDA, AMD, SOFI, or your own watchlist.</strong>
-            <span>Sign in with a beta magic link, search any supported ticker, and run a live evidence-led analysis.</span>
+            <strong>No detailed results yet.</strong>
+            <span>Ask about a supported public company to see the underlying scores and evidence.</span>
           </div>
         ) : (
           <div className={styles.reportGrid}>
@@ -878,8 +809,8 @@ export default function HomePage() {
           <div className={styles.feedbackModal}>
             <button type="button" className={styles.modalClose} onClick={() => { setGeneralFeedbackOpen(false); setGeneralFeedbackState('idle') }} aria-label="Close feedback">×</button>
             <p className={styles.kicker}>Beta line</p>
-            <h2 id="beta-feedback-title">Tell us where the desk broke down.</h2>
-            <p>Bugs, confusing language, missing context, or moments that saved you time—all signal, no ceremony.</p>
+            <h2 id="beta-feedback-title">Tell us what worked or failed.</h2>
+            <p>Share bugs, confusing language, missing context, or anything that saved you time.</p>
             <textarea value={generalComment} onChange={(event) => setGeneralComment(event.target.value)} maxLength={1000} rows={5} placeholder="What happened?" />
             <button type="button" onClick={submitGeneralFeedback} disabled={!generalComment.trim() || generalFeedbackState === 'sending'}>
               {generalFeedbackState === 'sending' ? 'Sending…' : generalFeedbackState === 'saved' ? 'Feedback saved' : 'Send to the product team'}
@@ -910,10 +841,10 @@ function PipelineItem({ step }: { step: PipelineStep }) {
 
 function ResearchJourney({ loading, result, progress }: { loading: boolean; result: AnalyzeResponse | null; progress: JobProgress | null }) {
   const stages = [
-    ['Market reader', 'Gathering current price history', null],
-    ['Evidence analyst', 'Checking research and company context', 'research'],
-    ['Risk reviewer', 'Testing what could weaken the case', 'challenge'],
-    ['Decision editor', 'Reconciling the evidence in plain English', 'synthesis'],
+    ['Market data', 'Gathering current price history', null],
+    ['Company research', 'Checking filings, results, and company context', 'research'],
+    ['Risks', 'Checking what could weaken the case', 'challenge'],
+    ['Answer', 'Summarizing the evidence in plain English', 'synthesis'],
   ] as const
   if (!loading && !result) return null
   const progressIndex = progress?.currentStage === 'market_data' ? 0
@@ -923,12 +854,12 @@ function ResearchJourney({ loading, result, progress }: { loading: boolean; resu
   const displayedActive = !loading && result ? stages.length : progressIndex
   const researchComplete = result?.outcome?.researchStatus === 'complete'
   const actualDetail = (name: string, fallback: string) => {
-    const label = name === 'Market reader' ? 'Public price fetch' : name === 'Evidence analyst' ? 'Research evidence' : name === 'Decision editor' ? 'AI summary' : 'Rule scoring'
+    const label = name === 'Market data' ? 'Public price fetch' : name === 'Company research' ? 'Research evidence' : name === 'Answer' ? 'AI summary' : 'Rule scoring'
     return result?.pipeline.find((step) => step.label === label)?.detail || fallback
   }
   return (
     <section className={styles.journey} aria-label="Research progress">
-      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Live analyst room</p><h2>{loading ? 'Researching your question…' : researchComplete ? 'Research review complete' : 'Research review partially available'}</h2></div><span>{loading && progress ? `${progress.percent}%` : `${Math.max(displayedActive, 1)}/${stages.length}`}</span></div>
+      <div className={styles.journeyHeader}><div><p className={styles.kicker}>Research progress</p><h2>{loading ? 'Checking the evidence…' : researchComplete ? 'Research complete' : 'Some research is unavailable'}</h2></div><span>{loading && progress ? `${progress.percent}%` : `${Math.max(displayedActive, 1)}/${stages.length}`}</span></div>
       <ol>
         {stages.map(([name, detail, checkpointName], index) => {
           const checkpoint = checkpointName ? result?.signals[0]?.deepAnalysis?.stages?.find((stage) => stage.name === checkpointName) : undefined
@@ -943,7 +874,39 @@ function ResearchJourney({ loading, result, progress }: { loading: boolean; resu
   )
 }
 
-function PriceJourney({ signal, compact = false }: { signal: SignalRow; compact?: boolean }) {
+function ContextualEvidenceVisual({ visual, signal, signals }: {
+  visual: ReturnType<typeof contextualVisual>
+  signal: SignalRow
+  signals: SignalRow[]
+}) {
+  if (visual.kind === 'price') return <PriceJourney signal={signal} compact title={visual.title} />
+  if (visual.kind === 'risk') {
+    const total = Math.max(1, visual.favorable + visual.caution + visual.uncertain)
+    return <section className={styles.contextVisual} aria-label="Balance of the case and risks">
+      <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+      <div className={styles.riskTotals}><b>{visual.favorable}<small>supporting</small></b><b>{visual.caution}<small>caution</small></b><b>{visual.uncertain}<small>uncertain</small></b></div>
+      <div className={styles.balanceBar} aria-hidden="true"><i className={styles.favorableBar} style={{ width: `${visual.favorable / total * 100}%` }}/><i className={styles.cautionBar} style={{ width: `${visual.caution / total * 100}%` }}/><i className={styles.uncertainBar} style={{ width: `${visual.uncertain / total * 100}%` }}/></div>
+      <p>These are counts of the points shown in the report, not probabilities.</p>
+    </section>
+  }
+  if (visual.kind === 'valuation') {
+    return <section className={styles.contextVisual} aria-label="Valuation evidence">
+      <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+      {visual.available ? <ul>{visual.items.slice(0, 4).map((item) => <li key={`${item.label}-${item.detail}`}><strong>{item.label}</strong><span>{item.detail}</span></li>)}</ul> : <div className={styles.visualUnavailable}><strong>No reliable valuation figure in this result</strong><span>The answer will not invent a multiple, target, or consensus estimate.</span></div>}
+    </section>
+  }
+  return <section className={styles.contextVisual} aria-label="Company comparison">
+    <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
+    <div className={styles.comparisonRows}>{signals.map((item) => {
+      const change = priceChange(item)
+      const evidenceCount = item.bullCase.length + item.bearCase.length + item.riskFlags.length
+      return <div key={item.symbol}><b>{item.symbol}</b><span>{change === null ? 'Price unavailable' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}% price`}</span><small>{evidenceCount} evidence points</small></div>
+    })}</div>
+    <p>Price changes use each company’s returned history. Evidence counts are not scores.</p>
+  </section>
+}
+
+function PriceJourney({ signal, compact = false, title = 'Price journey' }: { signal: SignalRow; compact?: boolean; title?: string }) {
   const rows = signal.priceHistory || []
   if (rows.length < 2) return <div className={styles.chartEmpty}>Price journey unavailable because reliable history was not returned.</div>
   const width = 720
@@ -954,7 +917,7 @@ function PriceJourney({ signal, compact = false }: { signal: SignalRow; compact?
   const spread = max - min || 1
   const points = rows.map((row, index) => `${(index / (rows.length - 1)) * width},${height - ((row.close - min) / spread) * (height - 24) - 12}`).join(' ')
   const change = (values.at(-1)! / values[0] - 1) * 100
-  return <figure className={`${styles.priceJourney} ${compact ? styles.compactPriceJourney : ''}`}><figcaption><div><span>Price journey</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}-${compact ? 'compact' : 'full'}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol}-${compact ? 'compact' : 'full'})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg>{!compact && <p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p>}</figure>
+  return <figure className={`${styles.priceJourney} ${compact ? styles.compactPriceJourney : ''}`}><figcaption><div><span>{title}</span><strong>{rows.length} trading days</strong></div><b className={change >= 0 ? styles.positiveChange : styles.negativeChange}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</b></figcaption><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${signal.symbol} price line over ${rows.length} trading days`} preserveAspectRatio="none"><defs><linearGradient id={`fill-${signal.symbol}-${compact ? 'compact' : 'full'}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2e6d57" stopOpacity=".28"/><stop offset="1" stopColor="#2e6d57" stopOpacity="0"/></linearGradient></defs><polygon points={`0,${height} ${points} ${width},${height}`} fill={`url(#fill-${signal.symbol}-${compact ? 'compact' : 'full'})`}/><polyline points={points} fill="none" stroke="#245d4b" strokeWidth="4" vectorEffect="non-scaling-stroke"/></svg>{!compact && <p>{change >= 0 ? 'Price has risen' : 'Price has fallen'} over the period. This describes the path; it does not predict what happens next.</p>}</figure>
 }
 
 function EvidenceBalance({ signal }: { signal: SignalRow }) {
@@ -970,7 +933,7 @@ function DeepResearchBrief({ signal }: { signal: SignalRow }) {
   return <div className={styles.deepBrief}>
     <p className={styles.askedQuestion}>“{report.question}”</p>
     <p className={styles.answerText}>{report.directAnswer}</p>
-    <section className={styles.distinctiveBlock}><span>What is distinctive now</span><p>{report.distinctiveNow}</p></section>
+    <section className={styles.distinctiveBlock}><span>What matters now</span><p>{report.distinctiveNow}</p></section>
     <div className={styles.debateGrid}>
       <section><span className={styles.debateLabel}>Strongest evidence</span><ul>{report.strongestEvidence.map((item) => <li key={item}>{item}</li>)}</ul></section>
       <section><span className={styles.debateLabel}>Strongest counterargument</span><ul>{report.strongestCounterargument.map((item) => <li key={item}>{item}</li>)}</ul></section>
