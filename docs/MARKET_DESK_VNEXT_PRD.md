@@ -1,10 +1,10 @@
 # Market Desk vNext — Living Thesis
 
 **Document type:** Product requirements document and delivery plan  
-**Status:** Draft for founder approval  
+**Status:** Approved for Milestones 1–3
 **Date:** 2026-09-19  
 **Owner:** Circuit Studio AI  
-**Implementation status:** Not started. No implementation branch should be created until this document is approved.
+**Implementation status:** Milestones 1–3 authorized on `feat/market-desk-vnext-prototype`.
 
 ## 1. Executive summary
 
@@ -590,14 +590,14 @@ The following defaults are proposed. Approval of the PRD approves these unless e
 
 **Requested decision:**
 
-- [ ] Approve as written and authorize Milestones 1–3 on the proposed new branch.
+- [x] Approve as written and authorize Milestones 1–3 on the proposed new branch.
 - [ ] Approve with listed changes.
 - [ ] Revise direction before implementation.
 
 **Founder notes:**
 
-_Pending._
+Approved as written for initial implementation through Milestone 3. User testing and live infrastructure remain separately gated.
 
 **Approval date:**
 
-_Pending._
+2026-09-20

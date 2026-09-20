@@ -6,8 +6,8 @@ export default function LandingPage() {
     <section className={styles.landingHero}>
       <p className={styles.kicker}>Circuit Market Desk</p>
       <h1>See how the evidence changes the story.</h1>
-      <p>A calm research assistant that checks market behavior, company evidence, and risk—then explains the result in plain English.</p>
-      <div className={styles.landingActions}><Link href="/desk">Open the research desk</Link><Link href="/learn">See how it works</Link></div>
+      <p>An AI research desk that maintains the investment case for every company you care about—and surfaces only the evidence that may change it.</p>
+      <div className={styles.landingActions}><Link href="/market-desk">Open the change inbox</Link><Link href="/desk">Ask the desk</Link></div>
     </section>
     <section className={styles.landingSteps}>
       <article><span>01</span><strong>Ask about a company</strong><p>Search by company name or ticker. Start with one question.</p></article>

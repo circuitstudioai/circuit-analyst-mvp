@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
 
-const links = [{ href: '/', label: 'Home' }, { href: '/desk', label: 'Research desk' }, { href: '/learn', label: 'How it works' }]
+const links = [{ href: '/', label: 'Home' }, { href: '/market-desk', label: 'Change inbox' }, { href: '/desk', label: 'Ask the desk' }, { href: '/learn', label: 'How it works' }]
 
 export function SiteNav() {
   const pathname = usePathname()
