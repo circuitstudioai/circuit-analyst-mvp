@@ -18,3 +18,11 @@ export function buildConversationContext(messages: ConversationMessage[], limit 
     `${message.role === 'user' ? 'User' : 'Analyst'}: ${message.content}`
   )).join('\n')
 }
+
+export function latestConversationRunId(messages: ConversationMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const runId = Number(messages[index].runId)
+    if (Number.isInteger(runId) && runId > 0) return runId
+  }
+  return null
+}

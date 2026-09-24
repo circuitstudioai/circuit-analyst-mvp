@@ -12,6 +12,16 @@ export function priceChange(signal: SignalRow) {
   return Number(((rows.at(-1)!.close / rows[0].close - 1) * 100).toFixed(1))
 }
 
+export function comparisonPeriod(signal: SignalRow) {
+  const rows = signal.priceHistory || []
+  if (rows.length < 2) return null
+  return {
+    tradingDays: rows.length,
+    startDate: rows[0].date,
+    endDate: rows.at(-1)!.date,
+  }
+}
+
 export function contextualVisual(intent: AnalysisIntent | undefined, signal: SignalRow): ContextualVisual {
   if (intent === 'risk') {
     return {

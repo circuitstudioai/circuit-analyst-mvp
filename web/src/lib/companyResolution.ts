@@ -59,7 +59,7 @@ export function companySearchQueries(question: string) {
   return [...new Map(queries.sort((a, b) => a.index - b.index).map((query) => [query.value.toLowerCase(), query.value])).values()].slice(0, 6)
 }
 
-export function resolveCompanyQuestion(question: string, candidates: CompanyCandidate[], maxSymbols = 2): CompanyResolution {
+export function resolveCompanyQuestion(question: string, candidates: CompanyCandidate[], maxSymbols = 5): CompanyResolution {
   const upperQuestion = question.toUpperCase()
   const bySymbol = new Map(candidates.map((candidate) => [candidate.symbol.toUpperCase(), candidate]))
   const matches: Array<{ index: number; candidate: CompanyCandidate }> = []

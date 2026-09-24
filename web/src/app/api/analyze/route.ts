@@ -12,7 +12,7 @@ import { buildConversationContext } from '@/lib/conversation'
 import { analysisJobForUser, updateAnalysisJob } from '@/lib/analysisJobs'
 
 const DEFAULT_WATCHLIST = ['AMD', 'SOFI', 'HIMS', 'HOOD', 'LMND', 'OSCR', 'WELL', 'ZETA', 'RLAY']
-const MAX_SYMBOLS = 2
+const MAX_SYMBOLS = 5
 const CACHE_TTL_MS = 1000 * 60 * 5
 const RATE_WINDOW_MS = 1000 * 60 * 60
 const RATE_LIMIT = 24
