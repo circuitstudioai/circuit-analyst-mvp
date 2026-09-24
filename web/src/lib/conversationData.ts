@@ -26,9 +26,9 @@ export async function researchMessages(userId: string, threadId: string, limit =
   const { data, error } = await sb.from('research_messages')
     .select('id,role,content,run_id,created_at,research_threads!inner(user_id)')
     .eq('thread_id', threadId).eq('research_threads.user_id', userId)
-    .order('created_at', { ascending: true }).limit(limit)
+    .order('created_at', { ascending: false }).limit(limit)
   if (error) throw new Error(error.message)
-  return (data || []).map((row) => ({
+  return (data || []).reverse().map((row) => ({
     id: Number(row.id),
     role: row.role as ConversationMessage['role'],
     content: String(row.content),

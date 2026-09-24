@@ -170,7 +170,7 @@ export async function recentUserRuns(userId: string, limit = 20) {
   const supabase = serviceClient()
   if (!supabase) return []
   const { data } = await supabase.from('analysis_requests')
-    .select('run_id,analysis_runs(id,as_of,regime_score,status,completed_at,created_at)')
+    .select('run_id,analysis_runs(id,as_of,regime_score,status,completed_at,created_at,watchlist,question)')
     .eq('user_id', userId)
     .not('run_id', 'is', null)
     .order('created_at', { ascending: false })

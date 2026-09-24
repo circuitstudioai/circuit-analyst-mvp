@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildConversationContext, conversationTitle } from './conversation'
+import { buildConversationContext, conversationTitle, latestConversationRunId } from './conversation'
 
 describe('analyst conversation context', () => {
   it('builds a bounded transcript that keeps roles explicit', () => {
@@ -18,5 +18,15 @@ describe('analyst conversation context', () => {
     expect(conversationTitle('  Why did CRWD weaken after earnings, and is it temporary?  '))
       .toBe('Why did CRWD weaken after earnings, and is it temporary?')
     expect(conversationTitle('A'.repeat(100))).toBe(`${'A'.repeat(57)}…`)
+  })
+
+  it('selects the latest persisted analysis attached to a conversation', () => {
+    expect(latestConversationRunId([
+      { role: 'user', content: 'Compare AMD and NVDA' },
+      { role: 'assistant', content: 'First answer', runId: 41 },
+      { role: 'user', content: 'What changed?' },
+      { role: 'assistant', content: 'Follow-up answer', runId: 52 },
+    ])).toBe(52)
+    expect(latestConversationRunId([{ role: 'user', content: 'Hello' }])).toBeNull()
   })
 })

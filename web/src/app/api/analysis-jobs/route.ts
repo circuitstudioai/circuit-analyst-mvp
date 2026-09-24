@@ -13,9 +13,11 @@ export async function POST(req: NextRequest) {
   if (!question) return NextResponse.json({ error: 'Ask a question to start research.' }, { status: 400 })
 
   let requestPayload: Record<string, unknown> = { ...body, question }
-  const suppliedSymbols = Array.isArray(body.watchlist)
-    ? body.watchlist.map((item) => String(item).trim().toUpperCase()).filter(Boolean).slice(0, 2)
+  const requestedSymbols = Array.isArray(body.watchlist)
+    ? body.watchlist.map((item) => String(item).trim().toUpperCase()).filter(Boolean)
     : []
+  const suppliedSymbols = requestedSymbols.slice(0, 5)
+  let truncated = requestedSymbols.length > suppliedSymbols.length
   if (!suppliedSymbols.length && !body.resumeRunId) {
     const resolution = await resolveQuestionCompanies(question)
     if (resolution.status === 'ambiguous') {
@@ -31,6 +33,7 @@ export async function POST(req: NextRequest) {
       }, { status: 422 })
     }
     requestPayload = { ...requestPayload, watchlist: resolution.symbols }
+    truncated = Boolean(resolution.truncated)
   } else if (suppliedSymbols.length) {
     requestPayload = { ...requestPayload, watchlist: suppliedSymbols }
   }
@@ -79,7 +82,7 @@ export async function POST(req: NextRequest) {
     }
   })
 
-  return NextResponse.json({ jobId, status: 'queued', symbols: requestPayload.watchlist || [] }, { status: 202 })
+  return NextResponse.json({ jobId, status: 'queued', symbols: requestPayload.watchlist || [], truncated, maxSymbols: 5 }, { status: 202 })
 }
 
 export async function GET(req: NextRequest) {

@@ -123,6 +123,8 @@ export type RecentRun = {
   as_of: string
   regime_score: number
   created_at: string
+  watchlist?: string[]
+  question?: string | null
 }
 
 export type EvidenceBadge = {

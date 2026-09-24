@@ -6,7 +6,7 @@ import styles from '../page.module.css'
 import { AnalyzeResponse, DeskConsensus, DeskEngine, PipelineStep, RecentRun, SignalRow } from '@/lib/types'
 import { BetaAccess } from '../BetaAccess'
 import { evidenceWorkspace } from '@/lib/analystWorkspace'
-import { contextualVisual, priceChange } from '@/lib/contextualVisual'
+import { comparisonPeriod, contextualVisual, priceChange } from '@/lib/contextualVisual'
 
 type CompanyChoice = {
   symbol: string
@@ -109,6 +109,8 @@ export default function HomePage() {
   const [messages, setMessages] = useState<ResearchMessage[]>([])
   const [followUpQuestion, setFollowUpQuestion] = useState('')
   const [jobProgress, setJobProgress] = useState<JobProgress | null>(null)
+  const [openingConversation, setOpeningConversation] = useState(false)
+  const [limitNotice, setLimitNotice] = useState('')
   const openedRun = useRef<string | null>(null)
 
   useEffect(() => {
@@ -120,13 +122,13 @@ export default function HomePage() {
   }, [])
 
   const loadUserWatchlist = useCallback((symbols: string[]) => {
-    setWatchlistText((current) => current || symbols.slice(0, 2).join(', '))
+    setWatchlistText((current) => current || symbols.slice(0, 5).join(', '))
   }, [])
 
   const pickUniverseSymbol = useCallback((symbol: string) => {
     setWatchlistText((current) => {
       const symbols = [...new Set([...current.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean), symbol])]
-      return symbols.slice(0, 2).join(', ')
+      return symbols.slice(0, 5).join(', ')
     })
   }, [])
 
@@ -146,8 +148,11 @@ export default function HomePage() {
   const previousRun = useMemo(() => {
     if (!result) return recentRuns[0]
     const current = new Date(result.asOf).getTime()
-    return recentRuns.find((run) => Math.abs(new Date(run.as_of).getTime() - current) > 1000)
-  }, [recentRuns, result])
+    return recentRuns.find((run) => (
+      Math.abs(new Date(run.as_of).getTime() - current) > 1000
+      && (!activeSymbol || !run.watchlist || run.watchlist.includes(activeSymbol))
+    ))
+  }, [activeSymbol, recentRuns, result])
 
   const visibleRuns = accessToken ? recentRuns : []
   const activeSignal = result?.signals.find((signal) => signal.symbol === activeSymbol) || result?.signals[0] || null
@@ -205,11 +210,18 @@ export default function HomePage() {
     if (messageResponse?.ok) {
       const data = await messageResponse.json()
       setMessages(Array.isArray(data?.messages) ? data.messages : [])
+      const restored = data?.result as AnalyzeResponse | null
+      setResult(restored)
+      setActiveSymbol(restored?.signals?.[0]?.symbol || null)
+      setFollowUp('summary')
     }
+    if (threadId) setOpeningConversation(false)
   }, [accessToken])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void refreshConversations(conversationId) }, 0)
+    const timer = window.setTimeout(() => {
+      void refreshConversations(conversationId).catch(() => setOpeningConversation(false))
+    }, 0)
     return () => window.clearTimeout(timer)
   }, [conversationId, refreshConversations])
 
@@ -242,6 +254,7 @@ export default function HomePage() {
     setLoading(true)
     setJobProgress({ status: 'queued', currentStage: 'queued', completedStages: [], percent: 0, terminal: false })
     setError('')
+    setLimitNotice('')
     setClarification(null)
     try {
       const res = await fetch('/api/analysis-jobs', {
@@ -256,6 +269,7 @@ export default function HomePage() {
       }
       if (!res.ok) throw new Error(queued?.error || 'Could not start research.')
       const resolvedSymbols = Array.isArray(queued.symbols) ? queued.symbols : symbols
+      if (queued.truncated) setLimitNotice(`Market Desk compared the first ${queued.maxSymbols || 5} companies. Split larger lists into another question.`)
       if (resolvedSymbols.length) setWatchlistText(resolvedSymbols.join(', '))
       let data: AnalyzeResponse | null = null
       for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -313,6 +327,7 @@ export default function HomePage() {
   }
 
   async function openConversation(thread: ResearchThread) {
+    setOpeningConversation(true)
     setConversationId(thread.id)
     setWatchlistText(thread.symbols.join(', '))
     setResult(null)
@@ -320,6 +335,7 @@ export default function HomePage() {
   }
 
   function newConversation() {
+    setOpeningConversation(false)
     setConversationId(null)
     setMessages([])
     setResult(null)
@@ -393,7 +409,7 @@ export default function HomePage() {
             onToken={setAccessToken}
             onLoadWatchlist={loadUserWatchlist}
             onPickSymbol={pickUniverseSymbol}
-            showOnboarding={Boolean(result)}
+            showOnboarding
             compact
           />
           <div className={styles.railHeading}>
@@ -429,7 +445,11 @@ export default function HomePage() {
           </div>
         )}
         <ResearchJourney loading={loading} result={result} progress={jobProgress} />
-        {!activeSignal && !loading ? (
+        {openingConversation ? (
+          <section className={styles.questionCard} aria-busy="true">
+            <div className={styles.questionCardIntro}><span className={styles.assistantMark}>C</span><div><h1>Restoring your research…</h1><p>Loading the conversation and its latest evidence-backed result.</p></div></div>
+          </section>
+        ) : !activeSignal && !loading ? (
           <section className={styles.questionCard}>
             <div className={styles.questionCardIntro}>
               <span className={styles.assistantMark}>C</span>
@@ -446,7 +466,7 @@ export default function HomePage() {
                 maxLength={500}
                 autoFocus
               />
-              <div><span>Try “Compare AMD and Intel after earnings.”</span><button type="submit" disabled={loading || !question.trim()}>{loading ? 'Researching…' : 'Start research'}</button></div>
+              <div><span>Compare up to five companies in one question.</span><button type="submit" disabled={loading || !question.trim()}>{loading ? 'Researching…' : 'Start research'}</button></div>
             </form>
             {clarification && (
               <div className={styles.clarification} role="group" aria-label={`Choose ${clarification.phrase}`}>
@@ -463,6 +483,7 @@ export default function HomePage() {
           </section>
         ) : activeSignal ? (
           <>
+            {limitNotice && <p className={styles.limitNotice}>{limitNotice}</p>}
             {result && result.signals.length > 1 && (
               <div className={styles.companyTabs} aria-label="Analyzed companies">
                 {result.signals.map((signal) => (
@@ -498,12 +519,26 @@ export default function HomePage() {
                 <span>Confidence is {activeSignal.deepAnalysis?.status === 'complete' ? activeSignal.deepAnalysis.confidence : activeSignal.confidence >= .75 ? 'high' : activeSignal.confidence >= .5 ? 'medium' : 'low'}. <InfoTip label="What confidence means" text="Confidence reflects how complete and consistent the available evidence is. It is not a prediction of future returns." /></span>
               </div>
 
+              <div className={styles.followUpDock}>
+                <form className={styles.followUpComposer} onSubmit={(event) => { event.preventDefault(); void askFollowUp() }}>
+                  <label htmlFor="follow-up-question">Continue this conversation</label>
+                  <div><input id="follow-up-question" value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} placeholder={`Ask a follow-up about ${activeSignal.symbol}…`} maxLength={500}/><button type="submit" disabled={loading || !followUpQuestion.trim()}>{loading ? 'Thinking…' : 'Ask'}</button></div>
+                  <small>The prior questions, answer, and companies stay in context.</small>
+                </form>
+                <div className={styles.followUpRow} aria-label="Suggested follow-ups">
+                  {followUps.filter((item) => item.id !== 'change').map((item) => <button key={item.id} aria-pressed={followUp === item.id} onClick={() => setFollowUp(item.id)}>{item.label}</button>)}
+                  <button disabled={loading} onClick={() => void runAnalysis([activeSignal.symbol], undefined, `Challenge the current view on ${activeSignal.symbol}. What is the strongest evidence against it?`)}>Challenge this view</button>
+                  <button disabled={loading} onClick={() => void runAnalysis([activeSignal.symbol], undefined, `What has changed in the ${activeSignal.symbol} investment case since the prior saved research?`)}>What changed?</button>
+                  {followUp !== 'summary' && <button onClick={() => setFollowUp('summary')}>Back to summary</button>}
+                </div>
+              </div>
+
               {followUp === 'summary' && activeSignal.deepAnalysis?.status === 'complete' && <DeepResearchBrief signal={activeSignal} />}
               {followUp === 'summary' && activeSignal.deepAnalysis?.status !== 'complete' && <>
                 <div className={styles.fallbackNotice}><strong>Limited result</strong><span>Company research was unavailable, so this answer uses price and trend data only.</span></div>
                 <p className={styles.answerText}>{activeSignal.aiExplanation || activeSignal.thesis}</p>
                 <div className={styles.answerGrid}>
-                  <div><span>Why <InfoTip label="How the recent trend is measured" text="We compare the stock’s average price over about one month with its average over about five months. Exact values remain in Advanced evidence." /></span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
+                  <div><span>Why <InfoTip label="How the recent trend is measured" text="We compare the stock’s average price over about one month with its average over about five months. The price chart shows the exact returned period." /></span><p>{activeSignal.reasons[0] || activeSignal.thesis}</p></div>
                   <div><span>What could change this</span><p>{activeSignal.invalidation}</p></div>
                   <div><span>What to do next</span><p>{activeSignal.nextAction}</p></div>
                 </div>
@@ -516,19 +551,8 @@ export default function HomePage() {
               </>}
               {followUp === 'simple' && <div className={styles.followUpAnswer}><strong>In simple terms</strong><p>{activeSignal.thesis}</p><p>This is a research signal, not a prediction or instruction to trade.</p></div>}
               {followUp === 'risks' && <div className={styles.followUpAnswer}><strong>The main things that could go wrong</strong><ul>{formatList([...activeSignal.riskFlags, ...activeSignal.bearCase]).slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ul></div>}
-              {followUp === 'valuation' && <div className={styles.followUpAnswer}><strong>Valuation view</strong><p>The detailed valuation engine uses visible bear, base, and bull assumptions when SEC fundamentals are available.</p><p>Open Advanced evidence below to inspect the assumptions and calculations. If the data is incomplete, Market Desk abstains.</p></div>}
+              {followUp === 'valuation' && <div className={styles.followUpAnswer}><strong>Valuation view</strong><p>The valuation engine uses visible bear, base, and bull assumptions when reliable fundamentals are available.</p><p>If those inputs are incomplete, Market Desk abstains instead of inventing a target or multiple.</p></div>}
               {followUp === 'evidence' && <div className={styles.followUpAnswer}><strong>Evidence used</strong><ul>{activeSignal.evidence.map((item) => <li key={`${item.label}-${item.detail}`}><b>{item.label}:</b> {item.detail}</li>)}</ul><small>Market data as of {activeSignal.dataAsOf || 'unavailable'}.</small></div>}
-              {followUp === 'change' && <div className={styles.followUpAnswer}><strong>Change since the prior run</strong><p>{previousRun ? `The prior saved run was ${new Date(previousRun.as_of).toLocaleDateString()}. Open Advanced evidence for the detailed comparison.` : 'A reliable comparison will appear after this company has at least two saved runs.'}</p></div>}
-
-              <div className={styles.followUpRow}>
-                {followUps.map((item) => <button key={item.id} aria-pressed={followUp === item.id} onClick={() => setFollowUp(item.id)}>{item.label}</button>)}
-                {followUp !== 'summary' && <button onClick={() => setFollowUp('summary')}>Back to summary</button>}
-              </div>
-              <form className={styles.followUpComposer} onSubmit={(event) => { event.preventDefault(); void askFollowUp() }}>
-                <label htmlFor="follow-up-question">Continue the conversation</label>
-                <div><input id="follow-up-question" value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} placeholder={`Ask a follow-up about ${activeSignal.symbol}…`} maxLength={500}/><button type="submit" disabled={loading || !followUpQuestion.trim()}>{loading ? 'Thinking…' : 'Ask'}</button></div>
-                <small>I’ll keep the prior questions and answers in context, then verify new factual claims.</small>
-              </form>
               <p className={styles.answerCaveat}>Educational research support only. The evidence can be incomplete or wrong; verify it before making financial decisions.</p>
             </article>
           </>
@@ -565,8 +589,8 @@ export default function HomePage() {
                 ))}
               </section>
               <div className={styles.railPrompts}>
-                <button type="button" onClick={() => setFollowUp('risks')}>Challenge this view</button>
-                <button type="button" onClick={() => setFollowUp('change')}>What changed?</button>
+                <button type="button" disabled={loading} onClick={() => void runAnalysis([activeSignal.symbol], undefined, `Challenge the current view on ${activeSignal.symbol}. What is the strongest evidence against it?`)}>Challenge this view</button>
+                <button type="button" disabled={loading} onClick={() => void runAnalysis([activeSignal.symbol], undefined, `What has changed in the ${activeSignal.symbol} investment case since the prior saved research?`)}>What changed?</button>
               </div>
             </>
           ) : (
@@ -577,7 +601,7 @@ export default function HomePage() {
         </aside>
       </section>
 
-      <details className={styles.advancedDesk}>
+      {process.env.NEXT_PUBLIC_SHOW_ANALYST_DIAGNOSTICS === 'true' && <details className={styles.advancedDesk}>
         <summary>Advanced evidence and system details</summary>
 
       <section className={styles.band}>
@@ -798,7 +822,7 @@ export default function HomePage() {
           </div>
         )}
       </section>
-      </details>
+      </details>}
 
       {accessToken && (
         <button type="button" className={styles.feedbackLauncher} onClick={() => setGeneralFeedbackOpen(true)}>
@@ -898,12 +922,22 @@ function ContextualEvidenceVisual({ visual, signal, signals }: {
   }
   return <section className={styles.contextVisual} aria-label="Company comparison">
     <div className={styles.contextVisualHeader}><span>Question focus</span><strong>{visual.title}</strong></div>
-    <div className={styles.comparisonRows}>{signals.map((item) => {
+    <div className={styles.comparisonLegend}><span>View</span><span>Confidence</span><span>Price window</span></div>
+    <div className={styles.comparisonRows}>{[...signals].sort((a, b) => {
+      const rank = { BUY: 0, HOLD: 1, SELL: 2 }
+      return rank[a.decision] - rank[b.decision] || b.confidence - a.confidence
+    }).map((item, index) => {
       const change = priceChange(item)
+      const period = comparisonPeriod(item)
       const evidenceCount = item.bullCase.length + item.bearCase.length + item.riskFlags.length
-      return <div key={item.symbol}><b>{item.symbol}</b><span>{change === null ? 'Price unavailable' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}% price`}</span><small>{evidenceCount} evidence points</small></div>
+      return <div key={item.symbol}>
+        <b><i>{index + 1}</i>{item.symbol}</b>
+        <span>{verdict(item)} · {pct(item.confidence)}</span>
+        <strong>{change === null ? 'Price unavailable' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</strong>
+        <small>{period ? `${period.tradingDays} trading days · ${new Date(`${period.startDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}–${new Date(`${period.endDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'No comparable period'} · {evidenceCount} evidence points</small>
+      </div>
     })}</div>
-    <p>Price changes use each company’s returned history. Evidence counts are not scores.</p>
+    <p>Ranked by the current research view, then confidence. Returns show each company’s exact available window; evidence counts are context, not scores.</p>
   </section>
 }
 

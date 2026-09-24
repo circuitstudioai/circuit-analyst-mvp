@@ -52,9 +52,9 @@ describe('question-first company resolution', () => {
     })
   })
 
-  it('limits comparisons to two companies', () => {
+  it('supports decision comparisons of up to five companies', () => {
     expect(resolveCompanyQuestion('Compare TSLA, AMD, and NVDA', catalog)).toMatchObject({
-      status: 'resolved', symbols: ['TSLA', 'AMD'], truncated: true,
+      status: 'resolved', symbols: ['TSLA', 'AMD', 'NVDA'],
     })
   })
 

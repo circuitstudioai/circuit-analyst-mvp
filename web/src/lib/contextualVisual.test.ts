@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contextualVisual, priceChange } from './contextualVisual'
+import { comparisonPeriod, contextualVisual, priceChange } from './contextualVisual'
 import { SignalRow } from './types'
 
 const signal = {
@@ -28,5 +28,13 @@ describe('contextual evidence visuals', () => {
   it('derives price change only from reliable history', () => {
     expect(priceChange(signal)).toBe(10)
     expect(priceChange({ ...signal, priceHistory: [] })).toBeNull()
+  })
+
+  it('describes the exact comparison window instead of showing an unlabeled percentage', () => {
+    expect(comparisonPeriod(signal)).toEqual({
+      tradingDays: 2,
+      startDate: '2026-09-01',
+      endDate: '2026-09-02',
+    })
   })
 })

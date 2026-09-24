@@ -62,6 +62,19 @@ export async function analysisJobForUser(userId: string, jobId: string) {
   }
 }
 
+export async function analysisResultForRun(userId: string, runId: number) {
+  const sb = serviceClient()
+  if (!sb) return null
+  const { data, error } = await sb.from('analysis_jobs')
+    .select('result_payload')
+    .eq('user_id', userId).eq('run_id', runId)
+    .not('result_payload', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(1).maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.result_payload || null
+}
+
 export async function updateAnalysisJob(jobId: string, userId: string, update: {
   status?: AnalysisJobStatus
   currentStage?: string
