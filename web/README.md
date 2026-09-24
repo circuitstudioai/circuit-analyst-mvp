@@ -24,6 +24,16 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `PUBLIC_APP_URL`: permanent origin used in magic-link redirects (production: `https://circuit-analyst.vercel.app`).
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
+- `MARKET_DESK_VNEXT_ROLLOUT`: controls the Living Thesis experience. `off` hides the route and keeps the current Research navigation; `preview` allows only direct `/market-desk` access; `on` also promotes Monitor in navigation and on the homepage. It defaults to `preview` on Vercel Preview/local development and fails closed to `off` in production.
+
+## Market Desk vNext rollout
+
+PR and local environments expose `/market-desk` by direct URL without changing
+the default customer journey. Production remains on the current Research desk
+unless `MARKET_DESK_VNEXT_ROLLOUT=on` is explicitly configured and redeployed.
+Use `preview` in production only for a controlled direct-link review; use `off`
+as the immediate kill switch. The prototype visibly identifies fixture evidence
+and does not claim that monitoring or watch-condition notifications are active.
 
 ## Analyst harness checkpoints
 

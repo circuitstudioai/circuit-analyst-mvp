@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   assertMarketDeskFixture,
+  buildDecisionRoomResearchHref,
   buildThesisDiff,
   rankInboxEvents,
   resolveDecisionObject,
@@ -53,6 +54,21 @@ describe('Market Desk contracts', () => {
     expect(resolveDecisionObject({ eventType: 'guidance', availableObjects: ['scenario', 'timeline'] })).toBe('scenario')
     expect(resolveDecisionObject({ eventType: 'evidence_conflict', availableObjects: ['conflict_map'] })).toBe('conflict_map')
     expect(resolveDecisionObject({ eventType: 'catalyst', availableObjects: ['timeline', 'peer_comparison'] })).toBe('timeline')
+  })
+
+  it('hands the active change and thesis claim to the live research desk', () => {
+    const event = marketDeskFixture.events[0]
+    const company = marketDeskFixture.companies.find((item) => item.id === event.companyId)!
+    const claim = company.currentThesis.claims.find((item) => item.id === event.affectedClaimId)!
+    const href = buildDecisionRoomResearchHref(company, event)
+    const url = new URL(href, 'https://market-desk.test')
+
+    expect(url.pathname).toBe('/desk')
+    expect(url.searchParams.get('tickers')).toBe(company.symbol)
+    expect(url.searchParams.get('source')).toBe('decision-room')
+    expect(url.searchParams.get('question')).toContain(event.title)
+    expect(url.searchParams.get('question')).toContain(claim.title)
+    expect(url.searchParams.get('question')).toContain(event.whyItMatters)
   })
 
   it('demonstrates required integrity states', () => {

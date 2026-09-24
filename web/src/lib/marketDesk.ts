@@ -206,6 +206,22 @@ export function resolveDecisionObject(input: Pick<ResearchEvent, 'eventType' | '
   return match
 }
 
+export function buildDecisionRoomResearchHref(company: CompanyDeskRecord, event: ResearchEvent) {
+  const claim = company.currentThesis.claims.find((item) => item.id === event.affectedClaimId)
+  const question = [
+    `Investigate this change for ${company.name} (${company.symbol}): ${event.title}.`,
+    `It may affect the thesis claim “${claim?.title || event.affectedClaimId}.”`,
+    event.whyItMatters,
+    'Verify the new evidence, challenge the current interpretation, and explain what would confirm or reverse the thesis impact.',
+  ].join(' ')
+  const query = new URLSearchParams({
+    tickers: company.symbol,
+    source: 'decision-room',
+    question,
+  })
+  return `/desk?${query.toString()}`
+}
+
 export const marketDeskLabels = {
   stance: { favorable: 'Favorable', mixed: 'Mixed', unfavorable: 'Unfavorable', insufficient_evidence: 'Insufficient evidence' },
   status: { strengthened: 'Strengthened', unchanged: 'Unchanged', under_pressure: 'Under pressure', invalidated: 'Invalidated' },

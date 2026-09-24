@@ -15,7 +15,7 @@ The prototype does not run unattended research, monitor live sources, persist ju
 5. Open **JPM** and confirm the Decision Room preserves operating-versus-risk disagreement rather than forcing consensus.
 6. Open the **HIMS** Living Thesis and confirm the system visibly abstains where category economics are missing.
 7. Open **Decision Lab** for NVDA, JPM, and HIMS. Confirm that Buy/Hold/Sell appears only as a named educational model artifact with horizon, assumptions, invalidation, freshness, and evaluation status.
-8. Use **Ask the desk** or the top prototype link to confirm the existing question-first `/desk` experience remains available.
+8. Use **Research this change** and confirm `/desk` opens with the company, active event, affected claim, and research question prefilled.
 9. Narrow the browser to a phone-width viewport and repeat the inbox → room → judgment path using keyboard navigation.
 
 ## Required integrity states represented
@@ -42,7 +42,7 @@ The prototype does not run unattended research, monitor live sources, persist ju
 
 - All research content and events are deterministic controlled fixtures as of the displayed fixture cutoff.
 - Mandate changes, judgments, and watch conditions are browser-session state and are not persisted.
-- “Ask the desk” opens the existing question-first system with company context; the active event/evidence bundle is not yet injected into the live agent prompt.
+- “Research this change” prefills the existing question-first system with the company, active event, affected claim, and why-it-matters context. The source evidence bundle is not yet passed as trusted research input, and the resulting answer does not write back to the fixture thesis.
 - No scheduled jobs, alerts, arbitrary ticker entry, portfolio advice, execution, or brokerage connections are included.
 - No live claims should be made from this prototype. Live evidence collection, durable storage, idempotent updates, operational telemetry, and notification controls remain Milestone 5 work, gated by user validation.
 - A formal securities-counsel review remains required before broad release of direct recommendation language, personalization, alerts, or monetization.
@@ -55,3 +55,16 @@ npm --prefix web run lint
 npm --prefix web run build
 git diff --check
 ```
+
+## Rollout control
+
+`MARKET_DESK_VNEXT_ROLLOUT` is the single rollout control:
+
+- `off`: `/market-desk` returns 404 and the current Research journey remains the only promoted product.
+- `preview`: `/market-desk` is available by direct link, with no homepage or primary-navigation promotion.
+- `on`: Monitor appears in primary navigation and the homepage presents the Monitor → Decision Room → Research journey.
+
+Vercel Preview and local development default to `preview`. Production defaults to
+`off`, so merging the branch cannot expose the prototype unless the production
+environment is explicitly changed and redeployed. Returning the variable to
+`off` is the rollout kill switch.

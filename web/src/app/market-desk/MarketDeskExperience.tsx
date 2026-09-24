@@ -7,10 +7,12 @@ import {
   MandateKind,
   MarketDeskFixture,
   ResearchEvent,
+  buildDecisionRoomResearchHref,
   buildThesisDiff,
   marketDeskLabels,
   rankInboxEvents,
 } from '@/lib/marketDesk'
+import { MarketDeskVnextRollout } from '@/lib/marketDeskRollout'
 import styles from './marketDesk.module.css'
 
 type Surface = 'inbox' | 'thesis' | 'lab'
@@ -116,7 +118,7 @@ function DecisionRoom({ event, company, judgment, onJudge, onBack }: { event: Re
       </div>}
       <small>Prototype only — watch conditions are saved in this browser session and monitoring is not active.</small>
     </section>
-    <Link className={styles.askDesk} href={`/desk?tickers=${company.symbol}`}>Ask the desk about this change <span>↗</span></Link>
+    <Link className={styles.askDesk} href={buildDecisionRoomResearchHref(company, event)}>Research this change <small>Open with the event and affected claim prefilled</small><span>↗</span></Link>
   </section>
 }
 
@@ -133,7 +135,7 @@ function DecisionLab({ fixture, activeCompany }: { fixture: MarketDeskFixture; a
   </section>
 }
 
-export function MarketDeskExperience({ fixture }: { fixture: MarketDeskFixture }) {
+export function MarketDeskExperience({ fixture, rollout }: { fixture: MarketDeskFixture; rollout: MarketDeskVnextRollout }) {
   const [surface, setSurface] = useState<Surface>('inbox')
   const [activeCompanyId, setActiveCompanyId] = useState(fixture.companies[0].id)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
@@ -157,7 +159,7 @@ export function MarketDeskExperience({ fixture }: { fixture: MarketDeskFixture }
   }
 
   return <main className={styles.shell}>
-    <div className={styles.prototypeBar}><span>Market Desk vNext</span><p>Controlled five-company prototype · no live monitoring</p><Link href="/desk">Open question-first desk ↗</Link></div>
+    <div className={styles.prototypeBar}><span>{rollout === 'preview' ? 'Private preview' : 'Market Desk vNext'}</span><p>Controlled five-company prototype · fixture evidence · monitoring is not active</p><Link href="/desk">Open live research ↗</Link></div>
     <div className={styles.workspace}>
       <CompanyRail companies={companies} activeId={activeCompanyId} onSelect={chooseCompany} />
       <div className={styles.mainColumn}>

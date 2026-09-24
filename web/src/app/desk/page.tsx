@@ -86,6 +86,7 @@ function researchAction(signal: SignalRow) {
 export default function HomePage() {
   const router = useRouter()
   const [question, setQuestion] = useState('')
+  const [handoffSource, setHandoffSource] = useState('')
   const [watchlistText, setWatchlistText] = useState(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('tickers') || ''
@@ -114,10 +115,15 @@ export default function HomePage() {
   const openedRun = useRef<string | null>(null)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const handedOffQuestion = params.get('question')
     const pendingQuestion = window.sessionStorage.getItem('pending-research-question')
-    if (!pendingQuestion) return
-    const timer = window.setTimeout(() => setQuestion(pendingQuestion), 0)
-    window.sessionStorage.removeItem('pending-research-question')
+    const initialQuestion = handedOffQuestion || pendingQuestion
+    const timer = window.setTimeout(() => {
+      if (initialQuestion) setQuestion(initialQuestion)
+      setHandoffSource(params.get('source') || '')
+    }, 0)
+    if (pendingQuestion) window.sessionStorage.removeItem('pending-research-question')
     return () => window.clearTimeout(timer)
   }, [])
 
@@ -453,7 +459,7 @@ export default function HomePage() {
           <section className={styles.questionCard}>
             <div className={styles.questionCardIntro}>
               <span className={styles.assistantMark}>C</span>
-              <div><h1>Ask about a company.</h1><p>Start with the decision or concern you have. Include a company name or ticker.</p></div>
+              <div><h1>{handoffSource === 'decision-room' ? 'Investigate this thesis change.' : 'Ask about a company.'}</h1><p>{handoffSource === 'decision-room' ? 'The active event and affected thesis claim are prefilled below. Edit the research question if you want to narrow the investigation.' : 'Start with the decision or concern you have. Include a company name or ticker.'}</p></div>
             </div>
             <form className={styles.primaryComposer} onSubmit={(event) => { event.preventDefault(); void runAnalysis() }}>
               <label htmlFor="research-question">Your question</label>

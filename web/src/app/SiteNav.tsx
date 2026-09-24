@@ -5,10 +5,12 @@ import { usePathname } from 'next/navigation'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
 
-const links = [{ href: '/', label: 'Home' }, { href: '/market-desk', label: 'Change inbox' }, { href: '/desk', label: 'Ask the desk' }, { href: '/learn', label: 'How it works' }]
+const researchLinks = [{ href: '/', label: 'Home' }, { href: '/desk', label: 'Research' }, { href: '/learn', label: 'How it works' }]
+const vnextLinks = [{ href: '/', label: 'Home' }, { href: '/market-desk', label: 'Monitor' }, { href: '/desk', label: 'Research' }, { href: '/learn', label: 'How it works' }]
 
-export function SiteNav() {
+export function SiteNav({ vnextPromoted = false }: { vnextPromoted?: boolean }) {
   const pathname = usePathname()
+  const links = vnextPromoted ? vnextLinks : researchLinks
   const [session, setSession] = useState<Session | null>(null)
 
   useEffect(() => {
