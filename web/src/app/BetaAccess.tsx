@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
+import { BetaDialog } from './BetaDialog'
 import styles from './page.module.css'
 
 type UniverseSymbol = { symbol: string; company_name: string; rank: number }
@@ -44,6 +45,7 @@ export function BetaAccess({
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const [onboarding, setOnboarding] = useState<Onboarding>(onboardingDefaults)
   const [onboardingState, setOnboardingState] = useState<'idle' | 'saving' | 'error'>('idle')
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const [cohort, setCohort] = useState<{
     exit_feedback_completed_at?: string | null
     beta_cohorts?: { name?: string; ends_on?: string } | null
@@ -53,6 +55,7 @@ export function BetaAccess({
     willingnessToPay: 'maybe',
   })
   const [exitSurveyState, setExitSurveyState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [exitSurveyDismissed, setExitSurveyDismissed] = useState(false)
   const [authConfigured] = useState(() => Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   ))
@@ -224,11 +227,14 @@ export function BetaAccess({
         ))}
       </div>}
 
-      {session && needsOnboarding && showOnboarding && createPortal((
-        <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
-          <form className={styles.onboardingCard} onSubmit={saveOnboarding}>
-            <span className={styles.betaEyebrow}>Two-minute setup · 1 of 1</span>
-            <h2 id="onboarding-title">Tell us how you invest.</h2>
+      {session && needsOnboarding && showOnboarding && !onboardingDismissed && createPortal((
+        <BetaDialog
+          eyebrow="Two-minute setup · 1 of 1"
+          title="Tell us how you invest."
+          titleId="onboarding-title"
+          onSubmit={saveOnboarding}
+          onDismiss={() => setOnboardingDismissed(true)}
+        >
             <p>These four answers help us tailor the alpha and evaluate whether it is useful.</p>
 
             <label>
@@ -270,16 +276,18 @@ export function BetaAccess({
               {onboardingState === 'saving' ? 'Saving…' : 'Save and continue'}
             </button>
             {onboardingState === 'error' && <p className={styles.onboardingError}>Could not save your setup. Please try again.</p>}
-          </form>
-        </div>
+        </BetaDialog>
       ), document.body)}
       {session && !needsOnboarding && cohort?.beta_cohorts?.ends_on
         && new Date() > new Date(`${cohort.beta_cohorts.ends_on}T23:59:59`)
-        && !cohort.exit_feedback_completed_at && exitSurveyState !== 'saved' && createPortal((
-        <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="exit-survey-title">
-          <form className={styles.onboardingCard} onSubmit={saveExitSurvey}>
-            <span className={styles.betaEyebrow}>Two-week checkpoint</span>
-            <h2 id="exit-survey-title">How useful was Market Desk?</h2>
+        && !cohort.exit_feedback_completed_at && exitSurveyState !== 'saved' && !exitSurveyDismissed && createPortal((
+        <BetaDialog
+          eyebrow="Two-week checkpoint"
+          title="How useful was Market Desk?"
+          titleId="exit-survey-title"
+          onSubmit={saveExitSurvey}
+          onDismiss={() => setExitSurveyDismissed(true)}
+        >
             <p>Your answers help us decide what to improve after this alpha.</p>
             <label>
               How would you feel if Market Desk disappeared?
@@ -300,8 +308,7 @@ export function BetaAccess({
             </label>
             <button type="submit" disabled={exitSurveyState === 'saving'}>{exitSurveyState === 'saving' ? 'Saving…' : 'Complete beta cycle'}</button>
             {exitSurveyState === 'error' && <p className={styles.onboardingError}>Could not save your response. Please try again.</p>}
-          </form>
-        </div>
+        </BetaDialog>
       ), document.body)}
     </div>
   )
