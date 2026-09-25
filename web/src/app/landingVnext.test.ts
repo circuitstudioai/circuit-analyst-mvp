@@ -12,16 +12,16 @@ describe('Market Desk vNext landing', () => {
   })
 
   it('explains the vNext loop through its real product objects', () => {
-    expect(landing).toContain('Change inbox')
-    expect(landing).toContain('Decision room')
-    expect(landing).toContain('Your judgment')
-    expect(landing).toContain('Living thesis')
+    expect(landing).toContain('Important changes')
+    expect(landing).toContain('Why it matters')
+    expect(landing).toContain('What to watch next')
+    expect(landing).toContain('Your reasoning stays visible')
   })
 
   it('labels the sample surface as fixture-backed and exposes interactive changes', () => {
-    expect(canvas).toContain('Controlled prototype · fixture evidence')
+    expect(canvas).toContain('Example using fixture data')
     expect(canvas).toContain('role="tablist"')
-    expect(canvas).toContain('Affected claim')
+    expect(canvas).toContain('What this could change')
   })
 
   it('stacks the monitoring canvas for narrow viewports and honors reduced motion', () => {
