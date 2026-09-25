@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Session } from '@supabase/supabase-js'
 import { getBrowserSupabase } from '@/lib/browserSupabase'
 import styles from './page.module.css'
@@ -223,7 +224,7 @@ export function BetaAccess({
         ))}
       </div>}
 
-      {session && needsOnboarding && showOnboarding && (
+      {session && needsOnboarding && showOnboarding && createPortal((
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
           <form className={styles.onboardingCard} onSubmit={saveOnboarding}>
             <span className={styles.betaEyebrow}>Two-minute setup · 1 of 1</span>
@@ -271,10 +272,10 @@ export function BetaAccess({
             {onboardingState === 'error' && <p className={styles.onboardingError}>Could not save your setup. Please try again.</p>}
           </form>
         </div>
-      )}
+      ), document.body)}
       {session && !needsOnboarding && cohort?.beta_cohorts?.ends_on
         && new Date() > new Date(`${cohort.beta_cohorts.ends_on}T23:59:59`)
-        && !cohort.exit_feedback_completed_at && exitSurveyState !== 'saved' && (
+        && !cohort.exit_feedback_completed_at && exitSurveyState !== 'saved' && createPortal((
         <div className={styles.onboardingBackdrop} role="dialog" aria-modal="true" aria-labelledby="exit-survey-title">
           <form className={styles.onboardingCard} onSubmit={saveExitSurvey}>
             <span className={styles.betaEyebrow}>Two-week checkpoint</span>
@@ -301,7 +302,7 @@ export function BetaAccess({
             {exitSurveyState === 'error' && <p className={styles.onboardingError}>Could not save your response. Please try again.</p>}
           </form>
         </div>
-      )}
+      ), document.body)}
     </div>
   )
 }
