@@ -10,7 +10,7 @@ The prototype does not run unattended research, monitor live sources, persist ju
 
 1. Open `/market-desk`. Confirm that the first screen prioritizes potentially belief-changing items rather than a chronological news feed.
 2. Open **NVDA — The margin bridge now carries more weight**. Identify the previous assumption, new evidence, bull/bear interpretations, scenario object, and source-to-thesis trail.
-3. Enter a natural-language watch condition and save **Watch this assumption**. Confirm that the UI labels monitoring as inactive.
+3. Enter a natural-language watch condition and save **Watch this assumption**. Confirm that the UI labels monitoring as inactive. Refresh the page and confirm the same condition is still visible. It lasts for this browser tab only.
 4. Return to the inbox. Open the **COST** item and confirm it explicitly records new evidence with no thesis change.
 5. Open **JPM** and confirm the Decision Room preserves operating-versus-risk disagreement rather than forcing consensus.
 6. Open the **HIMS** Living Thesis and confirm the system visibly abstains where category economics are missing.
@@ -41,7 +41,10 @@ The prototype does not run unattended research, monitor live sources, persist ju
 ## Known limitations and live-data boundary
 
 - All research content and events are deterministic controlled fixtures as of the displayed fixture cutoff.
-- Mandate changes, judgments, and watch conditions are browser-session state and are not persisted.
+- Mandate changes, judgments, and the watch-condition text are stored in `sessionStorage` for the current browser tab. They survive refresh and in-tab navigation. They are not stored on the account, and they disappear when the tab closes.
+- Company, change, thesis version, and evidence selection are restored from the `/market-desk` URL. The current thesis version is the default; earlier versions are selectable on the company view.
+- The research-aware chart is deferred to the five-company live vertical slice. It is not part of this fixture preview.
+- The global navigation remains Home / Monitor / Research / How it works when the rollout is promoted. A separate signed-in information architecture is not included.
 - “Research this change” prefills the existing question-first system with the company, active event, affected claim, and why-it-matters context. The source evidence bundle is not yet passed as trusted research input, and the resulting answer does not write back to the fixture thesis.
 - No scheduled jobs, alerts, arbitrary ticker entry, portfolio advice, execution, or brokerage connections are included.
 - No live claims should be made from this prototype. Live evidence collection, durable storage, idempotent updates, operational telemetry, and notification controls remain Milestone 5 work, gated by user validation.

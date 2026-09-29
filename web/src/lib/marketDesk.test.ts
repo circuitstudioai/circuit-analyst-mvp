@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   assertMarketDeskFixture,
   buildDecisionRoomResearchHref,
+  buildMarketDeskHref,
   buildThesisDiff,
+  parseMarketDeskSession,
   rankInboxEvents,
   resolveDecisionObject,
+  resolveMarketDeskLocation,
 } from './marketDesk'
 import { marketDeskFixture } from './marketDeskFixtures'
 
@@ -77,6 +80,46 @@ describe('Market Desk contracts', () => {
     expect(marketDeskFixture.events.some((event) => event.thesisEffect === 'no_change')).toBe(true)
     expect(marketDeskFixture.events.some((event) => event.category === 'disagreement')).toBe(true)
     expect(marketDeskFixture.companies.some((company) => company.currentThesis.stance === 'insufficient_evidence')).toBe(true)
+  })
+})
+
+describe('Market Desk preview state', () => {
+  it('restores a tab session without dropping the watch condition', () => {
+    const raw = JSON.stringify({
+      mandates: { 'company-nvda': 'owned', 'company-cost': 'nope' },
+      concerns: { 'company-nvda': 'Margin durability' },
+      judgments: {
+        'event-nvda-margin': { action: 'watch', condition: ' Only if gross margin stays below 70% ', savedAt: '2026-09-29T00:00:00Z' },
+        'event-cost-sales': { action: 'recommend' },
+      },
+      coverageAcknowledged: true,
+    })
+    const session = parseMarketDeskSession(raw)
+
+    expect(session.coverageAcknowledged).toBe(true)
+    expect(session.mandates).toEqual({ 'company-nvda': 'owned' })
+    expect(session.concerns['company-nvda']).toBe('Margin durability')
+    expect(session.judgments['event-nvda-margin']).toEqual({
+      action: 'watch',
+      condition: 'Only if gross margin stays below 70%',
+      savedAt: '2026-09-29T00:00:00Z',
+    })
+    expect(session.judgments['event-cost-sales']).toBeUndefined()
+    expect(parseMarketDeskSession('not-json').coverageAcknowledged).toBe(false)
+  })
+
+  it('builds a restorable location for a company, prior version, and evidence record', () => {
+    const location = resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'nvda', version: '1', evidence: 'nvda-e1' })
+    expect(location).toEqual({ view: 'thesis', companySymbol: 'NVDA', eventId: null, version: 1, evidenceId: 'nvda-e1' })
+    expect(buildMarketDeskHref(location)).toBe('/market-desk?view=thesis&company=NVDA&version=1&evidence=nvda-e1')
+    expect(resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'NVDA', version: '2' }).version).toBeNull()
+  })
+
+  it('opens a change on the company that owns it and ignores unknown records', () => {
+    const location = resolveMarketDeskLocation(marketDeskFixture, { company: 'COST', event: 'event-hims-regulation', evidence: 'cost-e1' })
+    expect(location).toEqual({ view: 'inbox', companySymbol: 'HIMS', eventId: 'event-hims-regulation', version: null, evidenceId: null })
+    expect(buildMarketDeskHref(location)).toBe('/market-desk?company=HIMS&event=event-hims-regulation')
+    expect(buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, { company: 'NOPE', view: 'nope' }))).toBe('/market-desk')
   })
 })
 

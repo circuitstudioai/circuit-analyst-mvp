@@ -12,6 +12,10 @@ describe('Market Desk vNext landing', () => {
   })
 
   it('explains the vNext loop through its real product objects', () => {
+    expect(landing).toContain('Five-company preview')
+    expect(landing).toContain('Review the example')
+    expect(landing).toContain('Research a company')
+    expect(landing).toContain('Monitoring is not active')
     expect(landing).toContain('Important changes')
     expect(landing).toContain('Why it matters')
     expect(landing).toContain('What to watch next')

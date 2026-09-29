@@ -23,11 +23,11 @@ function LivingThesisLanding() {
   return <main className={styles.landing}>
     <section className={styles.landingHero}>
       <div className={styles.heroCopy}>
-        <p className={styles.kicker}>Circuit Market Desk</p>
-        <h1>See which company updates could change your <em>investment view.</em></h1>
-        <p>Market Desk reviews filings, earnings calls, market moves, and material news for the companies you follow. It shows what matters, which part of your research may need another look, and what to check next.</p>
-        <div className={styles.landingActions}><Link href="/market-desk">Review important changes <span aria-hidden="true">→</span></Link><Link href="#example">See an example</Link></div>
-        <div className={styles.heroFootnote}><span>Follow 5–25 companies</span><span>Keep your research current</span></div>
+        <p className={styles.kicker}>Five-company preview</p>
+        <h1>Know what changed—and whether it changes the <em>case.</em></h1>
+        <p>This preview connects filings, earnings, market moves, and material news to the assumptions they support or weaken. It covers five example companies with fixture evidence. It is not continuously monitoring a personal watchlist.</p>
+        <div className={styles.landingActions}><Link href="/market-desk">Review the example <span aria-hidden="true">→</span></Link><Link href="/desk">Research a company</Link></div>
+        <div className={styles.heroFootnote}><span>NVDA, COST, XOM, JPM, HIMS</span><span>Monitoring is not active</span></div>
       </div>
       <div className={styles.heroNote} aria-label="Desk principle">
         <span>Desk principle · 01</span>
@@ -57,10 +57,10 @@ function LivingThesisLanding() {
       </div>
     </section>
     <section className={styles.landingCta}>
-      <p className={styles.kicker}>Review your companies</p>
+      <p className={styles.kicker}>Five-company preview</p>
       <h2>Spend your time on the <em>changes that matter.</em></h2>
-      <p>Open your morning review and start with the company research most likely to need attention.</p>
-      <Link href="/market-desk">Open Market Desk <span aria-hidden="true">→</span></Link>
+      <p>The example desk covers NVDA, COST, XOM, JPM, and HIMS. Monitoring is not active.</p>
+      <Link href="/market-desk">Review the example <span aria-hidden="true">→</span></Link>
     </section>
   </main>
 }
