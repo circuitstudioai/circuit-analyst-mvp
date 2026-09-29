@@ -232,12 +232,6 @@ export function MarketDeskExperience({ fixture, rollout, search }: { fixture: Ma
   const session = useMemo(() => sessionRaw === serverSessionSnapshot ? null : parseMarketDeskSession(sessionRaw || null), [sessionRaw])
   const [filter, setFilter] = useState<(typeof categoryFilters)[number]['value']>('all')
 
-  useEffect(() => {
-    const canonical = buildMarketDeskHref(location)
-    const actual = `${window.location.pathname}${window.location.search}`
-    if (actual !== canonical) router.replace(canonical, { scroll: false })
-  }, [location, router])
-
   const companies = useMemo(() => fixture.companies.map((company) => ({
     ...company,
     mandate: session?.mandates[company.id] || company.mandate,
@@ -254,8 +248,8 @@ export function MarketDeskExperience({ fixture, rollout, search }: { fixture: Ma
     router.push(buildMarketDeskHref(next), { scroll: false })
   }, [router])
   const closeEvidence = useCallback(() => {
-    go({ ...location, evidenceId: null })
-  }, [go, location])
+    router.replace(buildMarketDeskHref({ ...location, evidenceId: null }), { scroll: false })
+  }, [location, router])
 
   function updateSession(recipe: (current: MarketDeskSessionState) => MarketDeskSessionState) {
     writeMarketDeskSession(recipe(session || emptyMarketDeskSession()))

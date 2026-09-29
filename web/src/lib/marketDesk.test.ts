@@ -3,6 +3,7 @@ import {
   assertMarketDeskFixture,
   buildDecisionRoomResearchHref,
   buildMarketDeskHref,
+  marketDeskRequestHref,
   buildThesisDiff,
   parseMarketDeskSession,
   rankInboxEvents,
@@ -120,6 +121,10 @@ describe('Market Desk preview state', () => {
     expect(location).toEqual({ view: 'inbox', companySymbol: 'HIMS', eventId: 'event-hims-regulation', version: null, evidenceId: null })
     expect(buildMarketDeskHref(location)).toBe('/market-desk?company=HIMS&event=event-hims-regulation')
     expect(buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, { company: 'NOPE', view: 'nope' }))).toBe('/market-desk')
+    const canonical = buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'NVDA', version: '1' }))
+    const parsed = new URL(canonical, 'https://market-desk.test')
+    expect(marketDeskRequestHref(Object.fromEntries(parsed.searchParams))).toBe(canonical)
+    expect(marketDeskRequestHref({ company: 'nvda', view: 'thesis' })).not.toBe(canonical)
   })
 })
 

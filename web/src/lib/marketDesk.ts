@@ -313,6 +313,16 @@ export function resolveMarketDeskLocation(fixture: MarketDeskFixture, input: Mar
   return { view, companySymbol: company.symbol, eventId: null, version, evidenceId }
 }
 
+export function marketDeskRequestHref(input: MarketDeskSearchInput) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(input)) {
+    const raw = Array.isArray(value) ? value[0] : value
+    if (typeof raw === 'string' && raw.length) params.append(key, raw)
+  }
+  const query = params.toString()
+  return query ? `/market-desk?${query}` : '/market-desk'
+}
+
 export function buildMarketDeskHref(location: MarketDeskLocation) {
   const params = new URLSearchParams()
   if (location.eventId) {
