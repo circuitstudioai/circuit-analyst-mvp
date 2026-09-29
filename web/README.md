@@ -13,6 +13,18 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Production
+
+- App: [https://circuit-analyst.vercel.app](https://circuit-analyst.vercel.app)
+- Sign in: [https://circuit-analyst.vercel.app/login](https://circuit-analyst.vercel.app/login)
+- Analyst desk: [https://circuit-analyst.vercel.app/desk](https://circuit-analyst.vercel.app/desk) (authentication required)
+- Learn: [https://circuit-analyst.vercel.app/learn](https://circuit-analyst.vercel.app/learn)
+- Privacy: [https://circuit-analyst.vercel.app/privacy](https://circuit-analyst.vercel.app/privacy)
+- Terms: [https://circuit-analyst.vercel.app/terms](https://circuit-analyst.vercel.app/terms)
+
+Use this stable production origin for `PUBLIC_APP_URL` and user-facing links.
+Vercel preview deployment URLs are temporary.
+
 ## Optional integrations
 
 - `GEMINI_API_KEY`: enables question-aware deep research.

@@ -1,6 +1,6 @@
 # Circuit Analyst private alpha
 
-Production: `https://circuit-analyst.vercel.app`
+Production: [https://circuit-analyst.vercel.app](https://circuit-analyst.vercel.app)
 
 ## What is included
 

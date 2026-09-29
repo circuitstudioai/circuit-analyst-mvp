@@ -2,7 +2,7 @@
 
 ## Release gate
 
-Production URL: `https://circuit-analyst.vercel.app`
+Production URL: [https://circuit-analyst.vercel.app](https://circuit-analyst.vercel.app)
 
 1. Apply pending Supabase migrations.
 2. Set `OPEN_SIGNUP_ENABLED=true` and `PUBLIC_APP_URL=https://circuit-analyst.vercel.app`. To pause new access, set `OPEN_SIGNUP_ENABLED=false`; existing admins and `ALPHA_ALLOWED_EMAILS` entries retain access.
