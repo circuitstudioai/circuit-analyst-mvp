@@ -53,7 +53,7 @@ Ship a working public MVP for validation + virality, deployed on Vercel, with Su
 - [ ] First 10 external beta users invited
 
 ## Deliverables
-1. Live app URL (Vercel): https://circuit-market-desk.vercel.app
+1. Live app URL (Vercel): https://circuit-analyst.vercel.app
 2. Setup docs for Supabase schema + env vars
 3. Working Analyze flow (persistence auto-enabled when Supabase env vars are set)
 4. Gemini explanation in dashboard (auto-enabled when GEMINI_API_KEY is set)

@@ -2,6 +2,19 @@
 
 Authenticated early-feedback beta for an accountable AI market-research desk.
 
+## Live app
+
+- Production: [https://circuit-analyst.vercel.app](https://circuit-analyst.vercel.app)
+- Sign in: [https://circuit-analyst.vercel.app/login](https://circuit-analyst.vercel.app/login)
+- Analyst desk: [https://circuit-analyst.vercel.app/desk](https://circuit-analyst.vercel.app/desk) (authentication required)
+- Learn: [https://circuit-analyst.vercel.app/learn](https://circuit-analyst.vercel.app/learn)
+- Privacy: [https://circuit-analyst.vercel.app/privacy](https://circuit-analyst.vercel.app/privacy)
+- Terms: [https://circuit-analyst.vercel.app/terms](https://circuit-analyst.vercel.app/terms)
+
+The Vercel project deploys `web/` from `main`. Use the stable production URL
+above in product links and authentication redirects; preview deployment URLs
+are temporary and should not be documented as the public app URL.
+
 ## Live architecture (MVP)
 - **Vercel**: hosts the Next.js app (`/web`)
 - **Supabase**: optionally stores analysis runs/signals, consensus, saved reports, provider usage, and future user watchlists
@@ -17,8 +30,6 @@ npm run dev
 ```
 
 Open: `http://localhost:3000`
-
-Private alpha: `https://circuit-analyst.vercel.app`
 
 The production beta uses Supabase magic-link authentication. Signed-in users can
 search by company name or symbol and run any supported Yahoo equity/ETF ticker
