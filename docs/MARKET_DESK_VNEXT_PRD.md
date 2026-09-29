@@ -63,7 +63,7 @@ Add companies → establish baseline theses → monitor new evidence → link ev
 - Brokerage connections, order execution, position sizing, or portfolio rebalancing.
 - Personalized recommendations based on wealth, tax status, risk tolerance, or full portfolio composition.
 - Production-grade market-data licensing or commercial data SLAs.
-- OpenMarket-style terminal breadth such as large indicator libraries, order flow, depth-of-book/Level II, broad screeners, execution, or brokerage connectivity.
+- OpenMarket-style terminal breadth such as large indicator libraries, order flow, depth-of-book/Level II, broad screeners, generalized backtesting, execution, or brokerage connectivity.
 - A universal valuation model across company types.
 - Exposed multi-agent transcripts, avatars, or theatrical agent debate.
 - Claims of alpha, guaranteed returns, or model outperformance.
@@ -284,7 +284,7 @@ Every factual thesis statement must be traceable to one or more evidence items.
 - Stale, partial, missing, and failed market-series or marker data must remain visible. The product must not silently omit failed evidence and present the remainder as complete.
 - All chart meaning must also be available through keyboard-accessible controls and a text or table equivalent. Color cannot be the only carrier of series, stance, or event type.
 - Do not show unsupported valuation bands, synthetic precision, mixed-period comparisons, or probability-like visuals without their required deterministic calculation and data contracts.
-- Consensus-estimate revisions, earnings overlays beyond verified event markers, implied-volatility/options payoff views, order flow, depth-of-book, and broad indicator libraries remain deferred until their licensed data contracts and user value are proven.
+- Consensus-estimate revisions, earnings overlays beyond verified event markers, implied-volatility/options payoff views, order flow, depth-of-book, broad indicator libraries, generalized backtesting, and execution remain deferred until their licensed data contracts and user value are proven.
 
 ## 9. Domain and data model
 
@@ -393,12 +393,24 @@ The finance test harness remains the evaluation and promotion layer for evidence
 
 ### 12.3 Scale path
 
-- **5 → 50 companies:** add live evidence cycles, queues, caching, cost limits, and a small set of archetype templates.
+- **5 → 25 companies:** expand deliberately across company archetypes, source patterns, and analytical stresses; measure source coverage, false-positive interruptions, reliability, latency, cost per monitored company, and required analyst intervention.
+- **25 → 50 companies:** only after the pilot gates pass, add limited user-selected watchlists, monitoring controls, quotas, notification quality controls, broader archetype coverage, queues, caching, and cost limits.
 - **Focused chart → terminal breadth:** begin with price, volume, and evidence-linked events for the supported live companies. Add richer studies only after licensed data contracts, measurable user need, and acceptable reliability are demonstrated; do not pursue feature parity with OpenMarket as a launch goal.
 - **50 → 1,000:** add robust event ingestion, prioritization, observability, source coverage, and operational review tools.
 - **1,000 → broad market:** solve entity normalization, long-tail sector logic, data licensing, reliability, and unit economics.
 
 The UI and domain model should transfer substantially; trustworthy research operations are the principal scaling risk.
+
+### 12.4 Product target versus OpenMarket
+
+Market Desk is intentionally not targeting OpenMarket feature parity. Its near-term target is a **production-usable research desk** that reliably maintains evidence-linked theses and helps users inspect material changes.
+
+- Market Desk's current relative strengths are thesis memory, evidence-to-belief mapping, and decision workflow design.
+- Its current relative gaps are live source coverage, charting depth, latency and reliability, instrument breadth, operational maturity, and demonstrated daily-user value.
+- The five-company live alpha and 25-company pilot are the mechanism for closing the gaps that matter to the core thesis-maintenance loop.
+- Terminal breadth is strategically distracting until user validation, data rights, reliability, and unit economics justify it.
+
+Planning ranges are directional rather than commitments: a supervised five-company live alpha is expected to require roughly 3–6 engineering weeks after user validation, followed by roughly another 3–6 engineering weeks for a reliable 25-company pilot. Source access, licensing, production incidents, and validation findings may change those ranges.
 
 ## 13. Success metrics and validation
 
@@ -439,6 +451,10 @@ These are validation thresholds, not statistically conclusive market evidence.
 - Weekly return rate and thesis-change usefulness score.
 - False-positive interruption rate and silent-event audit rate.
 - Chart-marker open rate, evidence drill-through rate, annotation creation rate, and chart-linked research continuation rate.
+- Source coverage by company archetype and event type.
+- End-to-end update reliability and latency by source and company.
+- Cost per monitored company and per completed evidence-to-thesis update.
+- Analyst-intervention rate, intervention reason, and recovery time.
 
 ## 14. Delivery milestones
 
@@ -568,7 +584,9 @@ Deliverables:
 - Expanded and versioned research templates by archetype.
 - Source-coverage matrix and sector-specific missing-data behavior.
 - Event relevance and materiality precision review.
-- Cost, latency, reliability, and analyst-intervention report.
+- False-positive interruption and silent-event audits by company archetype.
+- Cost per monitored company, latency, reliability, and analyst-intervention report.
+- Recommendation on which archetypes and sources are eligible for limited user-selected watchlists.
 
 Exit gate:
 
@@ -631,6 +649,7 @@ The following defaults are proposed. Approval of the PRD approves these unless e
 7. Initial prototype ends at Milestone 3; Milestone 4 user testing requires a separate founder go-ahead, and Milestone 5 live infrastructure requires approval based on validation.
 8. Proposed implementation branch after approval: `feat/market-desk-vnext-prototype`.
 9. The five-company live vertical slice includes a focused native research-aware chart. OpenMarket-style terminal breadth is not a launch requirement.
+10. The product target is a production-usable Market Desk, not OpenMarket parity; limited user watchlists remain gated on the 25-company pilot.
 
 ## 17. Approval record
 
