@@ -35,6 +35,7 @@ The product's distinctive value is the combination of:
 - **Change Inbox:** the primary home screen, ranked by significance rather than chronology.
 - **Living Thesis:** the durable company record containing claims, assumptions, evidence, risks, catalysts, valuation context, confidence, and invalidation conditions.
 - **Decision Room:** a workspace generated for a material change, showing what changed, why it matters, competing interpretations, evidence lineage, relevant scenarios, and a user judgment checkpoint.
+- **Research-aware chart:** a supporting company and Decision Room view that places adjusted price and volume beside evidence-linked earnings, filing, guidance, thesis-change, and Decision Room markers. It is an inspection surface for the research record, not a standalone trading terminal.
 - **Ask the Desk:** a contextual research interaction available throughout the product, but not the primary product loop.
 - **Decision Lab:** an optional educational view of named models and their Buy/Hold/Sell classifications, assumptions, horizons, and historical results.
 
@@ -53,6 +54,7 @@ Add companies → establish baseline theses → monitor new evidence → link ev
 - Let a user preserve or update their own view without presenting the system as their fiduciary or trader.
 - Validate that users want the desk to continue monitoring explicit assumptions or questions.
 - Preserve the current question-first alpha as a working foundation and fallback during validation.
+- Validate that users can move from a chart event marker to the underlying evidence, affected claim, and thesis change without losing research context.
 
 ### 3.2 Non-goals for the five-company prototype
 
@@ -61,6 +63,7 @@ Add companies → establish baseline theses → monitor new evidence → link ev
 - Brokerage connections, order execution, position sizing, or portfolio rebalancing.
 - Personalized recommendations based on wealth, tax status, risk tolerance, or full portfolio composition.
 - Production-grade market-data licensing or commercial data SLAs.
+- OpenMarket-style terminal breadth such as large indicator libraries, order flow, depth-of-book/Level II, broad screeners, execution, or brokerage connectivity.
 - A universal valuation model across company types.
 - Exposed multi-agent transcripts, avatars, or theatrical agent debate.
 - Claims of alpha, guaranteed returns, or model outperformance.
@@ -153,6 +156,15 @@ The prototype should also be understandable to a serious prospective investor wh
    - Preserves the current question-first capability.
    - Answers using the active thesis, change event, and evidence bundle.
 
+8. **Research-aware chart**
+   - Deferred from the controlled-fixture prototype and required in the five-company live vertical slice.
+   - Supports adjusted candle or line views, volume, and useful time ranges.
+   - Overlays earnings, filings, guidance, thesis changes, and Decision Room events when those records have valid evidence lineage.
+   - Opens the linked evidence or change record when a user selects a marker.
+   - Lets an authenticated user save an annotation into the relevant Living Thesis context.
+   - Shows source, exchange timezone, currency, as-of and retrieval times, adjustment method, and degraded or missing-data states.
+   - Remains a research surface; it does not include trading controls or attempt to reproduce a general-purpose market terminal.
+
 ### 6.3 Controlled fixture rules
 
 - Evidence, thesis versions, events, and model decisions may be fixture-backed in the first prototype.
@@ -192,6 +204,7 @@ The prototype should also be understandable to a serious prospective investor wh
 - Failed evidence retrieval with recovery action.
 - Signed-out and signed-in behavior consistent with the existing alpha.
 - Desktop and mobile layouts.
+- Chart loading, partial-history, stale-data, corporate-action, and provider-failure states once the live chart is enabled.
 
 ### 7.4 Accessibility and comprehension
 
@@ -258,6 +271,21 @@ Every factual thesis statement must be traceable to one or more evidence items.
 - Aggregate model disagreement may be displayed; forced consensus is not required.
 - Historical results must include all eligible calls under a declared evaluation method, not selected examples.
 
+### 8.8 Research-aware chart
+
+- Treat charts as evidence, not decoration. A chart is shown only when it helps explain what changed, why it matters, or what would change the view.
+- The initial live chart supports adjusted OHLC candles or a line view, volume, and a small set of useful ranges. The interface may simplify to line plus event context on constrained screens.
+- Price history must identify provider, exchange timezone, currency, observed period, retrieval time, adjustment status, and missing intervals.
+- Corporate actions must be represented explicitly enough that splits, dividends, and symbol changes do not appear as false thesis-relevant price moves.
+- Event markers require stable IDs and may represent earnings, filings, guidance, research events, claim changes, thesis versions, or Decision Rooms. Every marker must link to its underlying evidence or research record.
+- Selecting a marker opens the corresponding evidence/change without discarding the active company, range, or comparison context.
+- User annotations are stored separately from system analysis and record company, author, timestamp, text, chart range, and optional thesis-version, claim, event, or evidence links.
+- Chart state must be deep-linkable and restorable, including company, range, display mode, and selected event. Private user annotations must never leak through a shared URL.
+- Stale, partial, missing, and failed market-series or marker data must remain visible. The product must not silently omit failed evidence and present the remainder as complete.
+- All chart meaning must also be available through keyboard-accessible controls and a text or table equivalent. Color cannot be the only carrier of series, stance, or event type.
+- Do not show unsupported valuation bands, synthetic precision, mixed-period comparisons, or probability-like visuals without their required deterministic calculation and data contracts.
+- Consensus-estimate revisions, earnings overlays beyond verified event markers, implied-volatility/options payoff views, order flow, depth-of-book, and broad indicator libraries remain deferred until their licensed data contracts and user value are proven.
+
 ## 9. Domain and data model
 
 The production-oriented prototype contract should include:
@@ -276,6 +304,10 @@ The production-oriented prototype contract should include:
 - `user_judgments`: user-owned action, rationale, thesis version, and timestamp.
 - `monitoring_rules`: user/system rule, structured condition, review status, and activation state.
 - `notifications`: delivery decision and audit record; inactive in the first prototype.
+- `market_series`: provider-backed adjusted and unadjusted OHLC/line and volume observations with symbol identity, exchange timezone, currency, interval, retrieval time, and quality state.
+- `corporate_actions`: splits, dividends, symbol changes, and other adjustment records used to explain or transform displayed history.
+- `chart_event_markers`: stable links from a time coordinate to evidence, research events, claim changes, thesis versions, or Decision Rooms.
+- `chart_annotations`: user-owned notes with chart context and optional links to a thesis version, claim, event, or evidence item.
 
 ### 9.1 Invariants
 
@@ -285,6 +317,9 @@ The production-oriented prototype contract should include:
 - A user judgment cannot be generated or modified by an agent.
 - A model output cannot be relabeled as a personalized user action.
 - Archetype and prompt versions are recorded for reproducibility.
+- A chart event marker cannot exist without a valid underlying evidence or research-record link.
+- A user chart annotation cannot be generated, changed, or made public by an agent.
+- Reprocessing the same source event must not create duplicate markers or corporate-action adjustments.
 
 ## 10. Agent and research contract
 
@@ -312,6 +347,7 @@ Cheap event detection → identity and deduplication → relevance filter → ta
 - Record calls, tokens, latency, provider, cost, failures, and fallback for every research run.
 - Enforce per-run budgets and explicit partial completion.
 - A model or source failure must not silently produce a high-confidence thesis.
+- Market-series normalization, corporate-action adjustment, marker identity, and chart-to-record links remain deterministic control-plane responsibilities.
 
 ## 11. Decision-language policy
 
@@ -358,6 +394,7 @@ The finance test harness remains the evaluation and promotion layer for evidence
 ### 12.3 Scale path
 
 - **5 → 50 companies:** add live evidence cycles, queues, caching, cost limits, and a small set of archetype templates.
+- **Focused chart → terminal breadth:** begin with price, volume, and evidence-linked events for the supported live companies. Add richer studies only after licensed data contracts, measurable user need, and acceptable reliability are demonstrated; do not pursue feature parity with OpenMarket as a launch goal.
 - **50 → 1,000:** add robust event ingestion, prioritization, observability, source coverage, and operational review tools.
 - **1,000 → broad market:** solve entity normalization, long-tail sector logic, data licensing, reliability, and unit economics.
 
@@ -372,6 +409,7 @@ Test with at least five target-profile users after internal review.
 - At least 4/5 can explain what changed and which claim it affects without assistance.
 - At least 4/5 correctly distinguish the system thesis, a model decision, and their own judgment.
 - At least 4/5 can locate supporting evidence and freshness.
+- At least 4/5 can select a material chart marker and explain the linked event, affected claim, and thesis effect without assistance once the live chart is tested.
 - Median time to identify why the top inbox item matters is under 60 seconds.
 - At least 3/5 choose a meaningful judgment or watch condition without prompting.
 - At least 4/5 prefer the Change Inbox as a return surface over a blank chat or static watchlist for ongoing monitoring.
@@ -389,6 +427,7 @@ These are validation thresholds, not statistically conclusive market evidence.
 - Existing authenticated question-first flows continue to pass.
 - Relevant unit tests, finance evaluation, lint, and production build pass.
 - Desktop and mobile accessibility/smoke checks pass before founder review.
+- Live-chart tests verify adjusted-history integrity, marker deduplication and lineage, restorable URL state, keyboard access, and text/table equivalence before the chart is promoted.
 
 ### 13.3 Metrics reserved for live pilot
 
@@ -399,6 +438,7 @@ These are validation thresholds, not statistically conclusive market evidence.
 - Watch-condition creation rate.
 - Weekly return rate and thesis-change usefulness score.
 - False-positive interruption rate and silent-event audit rate.
+- Chart-marker open rate, evidence drill-through rate, annotation creation rate, and chart-linked research continuation rate.
 
 ## 14. Delivery milestones
 
@@ -508,12 +548,14 @@ Deliverables:
 - Persistent mandates, theses, claims, evidence links, events, diffs, and judgments.
 - Live baseline thesis generation for the five companies.
 - At least one live update cycle and materiality decision.
+- A native research-aware chart for the five supported companies with adjusted price/volume, useful ranges, verified earnings/filing/guidance/thesis-change/Decision Room markers, marker-to-evidence navigation, and persisted user annotations.
+- Reconciled provider timestamps, corporate actions, marker identities, degraded-data states, mobile behavior, accessible text/table fallback, and restorable chart URLs.
 - Idempotent jobs, retries, partial completion, observability, cost/latency telemetry, and audit history.
 - Fixture/live adapter parity tests.
 
 Exit gate:
 
-- Each company can complete a baseline; a real new event can create either a silent history record or validated inbox item; failure and abstention behavior are verified.
+- Each company can complete a baseline; a real new event can create either a silent history record or validated inbox item; the same event appears exactly once in the research record and chart when eligible; marker drill-through reaches its evidence and affected claim; failure and abstention behavior are verified.
 
 ### Milestone 6 — 25-company archetype pilot
 
@@ -557,6 +599,7 @@ Exit gate:
 - Current Circuit Analyst web app and Supabase foundation.
 - Finance test harness contracts/evaluations.
 - Reliable SEC, company investor-relations, market-price, and material-news inputs for the live slice.
+- Licensed, corporate-action-aware historical price and volume data with stable event timestamps for the native chart.
 - Product design and user-testing capacity.
 - Legal review before expanding recommendation-like language or personalized alerts.
 
@@ -570,6 +613,8 @@ Exit gate:
 | Generic analysis across sectors | Weak or misleading theses | Versioned archetype research templates and 25-company pilot |
 | Buy/Sell dominates experience | Signal-service positioning and regulatory risk | Keep primary labels evidence/thesis based; isolate model outputs in Decision Lab |
 | Cost/latency grows with coverage | Poor unit economics and experience | Targeted reruns, caching, budgets, quotas, telemetry |
+| Chart implies more certainty than the evidence supports | Users mistake visual precision or correlation for a validated thesis effect | Evidence-linked markers, visible calculation contracts, adjusted-history checks, text equivalents, and explicit missing/stale states |
+| Chart scope expands into terminal imitation | Delivery slows while the core thesis-maintenance loop remains unvalidated | Limit the live slice to price, volume, useful ranges, linked events, and annotations; gate all richer terminal features on user and data evidence |
 | Fixtures overstate live capability | Invalid validation | Clearly label simulation; use production-shaped contracts; require live slice before launch claims |
 | Existing alpha regresses | Lose validated capability | Feature flag, regression suite, preserve question-first route/workflow |
 
@@ -585,6 +630,7 @@ The following defaults are proposed. Approval of the PRD approves these unless e
 6. Buy/Hold/Sell appears only in the secondary educational Decision Lab under the policy in Section 11.
 7. Initial prototype ends at Milestone 3; Milestone 4 user testing requires a separate founder go-ahead, and Milestone 5 live infrastructure requires approval based on validation.
 8. Proposed implementation branch after approval: `feat/market-desk-vnext-prototype`.
+9. The five-company live vertical slice includes a focused native research-aware chart. OpenMarket-style terminal breadth is not a launch requirement.
 
 ## 17. Approval record
 
