@@ -5,6 +5,7 @@ import { marketDeskFixture } from '@/lib/marketDeskFixtures'
 import { ChartMode, ChartRange } from '@/lib/marketDesk'
 import { pilotSymbol } from '@/lib/marketDeskPilot'
 import { fetchJson, parseYahooChart } from '@/lib/marketDeskSources'
+import { serviceClient } from '@/lib/supabase'
 
 const ranges = new Set<ChartRange>(['1m', '3m', '1y', '5y'])
 const modes = new Set<ChartMode>(['line', 'candle'])
@@ -31,7 +32,20 @@ export async function GET(req: NextRequest) {
   const mode = modes.has(requestedMode) ? requestedMode : 'line'
   const retrievedAt = new Date().toISOString()
   const store = (globalThis as { marketDeskStore?: MemoryDeskStore }).marketDeskStore
-  const liveMarkers = [...(store?.markers.values() || [])].filter((marker) => marker.symbol === symbol)
+  const memoryMarkers = [...(store?.markers.values() || [])].filter((marker) => marker.symbol === symbol)
+  const client = serviceClient()
+  const { data: persistedRows } = client
+    ? await client.from('market_desk_markers').select('id,symbol,evidence_id,event_id,marker_date,label').eq('symbol', symbol).order('marker_date', { ascending: true })
+    : { data: [] }
+  const persistedMarkers = (persistedRows || []).map((row) => ({
+    id: row.id,
+    symbol: row.symbol,
+    evidenceId: row.evidence_id,
+    eventId: row.event_id,
+    date: row.marker_date,
+    label: row.label,
+  }))
+  const liveMarkers = [...new Map([...persistedMarkers, ...memoryMarkers].map((marker) => [marker.id, marker])).values()]
   try {
     const payload = await fetchJson(fetch, `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=5y&interval=1d&events=div%7Csplit`)
     const parsed = parseYahooChart(payload, retrievedAt)

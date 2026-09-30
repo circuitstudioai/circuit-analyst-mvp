@@ -25,7 +25,7 @@ import {
   resolveMarketDeskLocation,
 } from '@/lib/marketDesk'
 import { MarketDeskVnextRollout } from '@/lib/marketDeskRollout'
-import { CycleMarker } from '@/lib/marketDeskCycle'
+import { CompanyCycleResult, CycleMarker } from '@/lib/marketDeskCycle'
 import { ResearchChart } from './ResearchChart'
 import styles from './marketDesk.module.css'
 
@@ -229,7 +229,7 @@ function EvidenceDrawer({ item, onClose }: { item: EvidenceItem; onClose: () => 
   </div>
 }
 
-export function MarketDeskExperience({ fixture, rollout, search }: { fixture: MarketDeskFixture; rollout: MarketDeskVnextRollout; search: MarketDeskSearchInput }) {
+export function MarketDeskExperience({ fixture, rollout, search, liveNvda }: { fixture: MarketDeskFixture; rollout: MarketDeskVnextRollout; search: MarketDeskSearchInput; liveNvda: CompanyCycleResult | null }) {
   const router = useRouter()
   const location = useMemo(() => resolveMarketDeskLocation(fixture, search), [fixture, search])
   const sessionRaw = useSyncExternalStore(subscribeToMarketDeskSession, readMarketDeskSession, () => serverSessionSnapshot)
@@ -295,6 +295,11 @@ export function MarketDeskExperience({ fixture, rollout, search }: { fixture: Ma
         if (company) visit({ view: 'thesis', companySymbol: company.symbol, eventId: null, version: null, evidenceId: null })
       }} />
       <div className={styles.mainColumn}>
+        {activeCompany.symbol === 'NVDA' && liveNvda ? <section className={styles.liveCycle} aria-label="Latest persisted NVDA research cycle">
+          <div><span>Live NVDA evidence cycle</span><strong>Thesis v{liveNvda.thesisVersion ?? '—'} · {liveNvda.status}</strong></div>
+          <p>{liveNvda.event?.title || 'No new evidence event was created.'}</p>
+          <small>{liveNvda.evidence.length} evidence records · {liveNvda.partialReasons.length ? liveNvda.partialReasons.join(' · ') : 'All required evidence lenses present'}</small>
+        </section> : null}
         <nav className={styles.localNav} aria-label="Market Desk sections">
           <button type="button" aria-current={!activeEvent && location.view === 'inbox' ? 'page' : undefined} onClick={() => visit({ view: 'inbox', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Change inbox <b>{fixture.events.length}</b></button>
           <button type="button" aria-current={!activeEvent && location.view === 'thesis' ? 'page' : undefined} onClick={() => visit({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Living thesis</button>

@@ -44,13 +44,13 @@ The prototype does not run unattended research, monitor live sources, persist ju
 - Mandate changes, judgments, and the watch-condition text are stored in `sessionStorage` for the current browser tab. They survive refresh and in-tab navigation. They are not stored on the account, and they disappear when the tab closes.
 - Company, change, thesis version, and evidence selection are restored from the `/market-desk` URL. The current thesis version is the default; earlier versions are selectable on the company view.
 - The research chart loads adjusted price and volume for the five pilot companies. If the provider fails, the desk shows a failed or missing state and still lists evidence-linked markers. Chart notes saved from the page stay in this browser tab and are omitted from the URL.
-- Account persistence for judgments, annotations, cycle runs, and markers is server-only. It writes when Supabase is configured. Browser clients have no table policies.
-- `POST /api/market-desk/cycle` runs one five-company evidence pass and deduplicates by idempotency key. `POST /api/market-desk/monitoring` refuses activation. Alerts are not sent.
+- Account persistence for judgments and annotations, plus cycle runs, evidence, and markers, is server-only. Browser clients have no table policies.
+- `POST /api/market-desk/cycle` runs one NVDA primary-filing evidence pass, restores the prior persisted thesis, and deduplicates by idempotency key. The latest persisted cycle is shown separately from fixture thesis content in the NVDA view. `POST /api/market-desk/monitoring` refuses activation. Alerts are not sent.
 - Milestone 4 moderated sessions have not been run. The protocol is `docs/MARKET_DESK_USER_VALIDATION.md`. User-selected watchlists stay closed until the gates in that live slice are actually met.
 - The global navigation remains Home / Monitor / Research / How it works when the rollout is promoted. A separate signed-in information architecture is not included.
 - “Research this change” prefills the existing question-first system with the company, active event, affected claim, and why-it-matters context. The source evidence bundle is not yet passed as trusted research input, and the resulting answer does not write back to the fixture thesis.
 - No scheduled jobs, alerts, arbitrary ticker entry, portfolio advice, execution, or brokerage connections are included.
-- No live claims should be made from this prototype. Live evidence collection, durable storage, idempotent updates, operational telemetry, and notification controls remain Milestone 5 work, gated by user validation.
+- The only live research claim is the separately labeled NVDA cycle. The five-company thesis UI remains fixture-backed. Scheduled execution, broader source coverage, operational telemetry, and notification controls remain Milestone 5 work, gated by user validation.
 - A formal securities-counsel review remains required before broad release of direct recommendation language, personalization, alerts, or monetization.
 
 ## Milestone 3 acceptance commands

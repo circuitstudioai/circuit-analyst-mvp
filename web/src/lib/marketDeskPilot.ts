@@ -1,8 +1,9 @@
 import { buildChartModel, CorporateAction, PriceBar } from './marketDeskChart'
 import { commitCompanyCycle, CompanyCycleResult, contentHash, CycleObservation, MemoryDeskStore, PriorThesis, runCompanyCycle } from './marketDeskCycle'
-import { fetchJson, parseSecFilings, parseYahooChart, priceObservation } from './marketDeskSources'
+import { extractFilingObservations, fetchJson, fetchText, parseSecFilingDocuments, parseSecFilings, parseYahooChart, priceObservation } from './marketDeskSources'
 import { currentPilotGateReport, pilotCompanies, researchTemplates, watchlistEligibility } from './marketDeskTemplates'
 import { ChartMode, ChartRange } from './marketDesk'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -47,6 +48,55 @@ export async function collectCompanyInputs(company: (typeof pilotCompanyList)[nu
   const priceLens = template.lenses[template.lenses.length - 1]
   const price = priceObservation(company.symbol, bars, priceLens.id, retrievedAt)
   return { bars, corporateActions, currency, exchangeTimezone, observations: [...filings, ...(price ? [price] : [])], failures }
+}
+
+export async function collectNvdaInputs(fetchImpl: FetchLike, retrievedAt: string) {
+  const company = pilotCompanyList.find((item) => item.symbol === 'NVDA')!
+  const failures: string[] = []
+  const template = researchTemplates[company.archetype]
+  let bars: PriceBar[] = []
+  let corporateActions: CorporateAction[] = []
+  let currency = 'USD'
+  let exchangeTimezone = 'America/New_York'
+  try {
+    const payload = await fetchJson(fetchImpl, `https://query1.finance.yahoo.com/v8/finance/chart/${company.symbol}?range=5y&interval=1d&events=div%7Csplit`)
+    const parsed = parseYahooChart(payload, retrievedAt)
+    bars = parsed.bars
+    corporateActions = parsed.corporateActions
+    currency = parsed.currency
+    exchangeTimezone = parsed.exchangeTimezone
+  } catch (error) {
+    failures.push(`NVDA price history failed: ${error instanceof Error ? error.message : 'unknown error'}`)
+  }
+
+  let filingObservations: CycleObservation[] = []
+  const secHeaders = { 'User-Agent': process.env.SEC_USER_AGENT || 'Circuit Market Desk research@circuitstudio.ai' }
+  try {
+    const submissions = await fetchJson(fetchImpl, `https://data.sec.gov/submissions/CIK${company.cik}.json`, secHeaders)
+    const filings = parseSecFilingDocuments(submissions, company.cik)
+    const filing = filings.find((item) => item.form === '10-Q' || item.form === '10-K') || filings[0]
+    if (!filing) {
+      failures.push('NVDA SEC submissions did not include a primary 10-Q, 10-K, or 8-K document')
+    } else {
+      const html = await fetchText(fetchImpl, filing.sourceUrl, secHeaders)
+      filingObservations = extractFilingObservations({ html, filing, lenses: template.lenses, retrievedAt })
+      if (!filingObservations.length) failures.push(`NVDA ${filing.form} did not yield supported research-lens passages`)
+    }
+  } catch (error) {
+    failures.push(`NVDA primary filing failed: ${error instanceof Error ? error.message : 'unknown error'}`)
+  }
+
+  const priceLens = template.lenses[template.lenses.length - 1]
+  const price = priceObservation(company.symbol, bars, priceLens.id, retrievedAt)
+  return {
+    company,
+    bars,
+    corporateActions,
+    currency,
+    exchangeTimezone,
+    observations: [...filingObservations, ...(price ? [price] : [])],
+    failures,
+  }
 }
 
 export async function runPilotSlice(input: {
@@ -162,6 +212,57 @@ type InsertClient = {
   }
 }
 
+type LatestRunQuery = {
+  select: (columns: string) => LatestRunQuery
+  eq: (column: string, value: string) => LatestRunQuery
+  order: (column: string, options: { ascending: boolean }) => LatestRunQuery
+  limit: (count: number) => LatestRunQuery
+  maybeSingle: () => PromiseLike<{ data: { payload?: CompanyCycleResult } | null; error: { message: string } | null }>
+}
+
+type LatestRunClient = { from: (table: string) => LatestRunQuery }
+
+export async function loadLatestCycle(client: LatestRunClient | SupabaseClient, symbol: string): Promise<CompanyCycleResult | null> {
+  const queryClient = client as unknown as LatestRunClient
+  const { data, error } = await queryClient.from('market_desk_runs')
+    .select('payload')
+    .eq('symbol', symbol.toUpperCase())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`Market Desk latest-cycle read failed: ${error.message}`)
+  const result = data?.payload as CompanyCycleResult | undefined
+  return result?.symbol === symbol.toUpperCase() ? result : null
+}
+
+export async function loadLatestPrior(client: LatestRunClient | SupabaseClient, symbol: string): Promise<PriorThesis | null> {
+  const result = await loadLatestCycle(client, symbol)
+  if (!result || typeof result.thesisVersion !== 'number') return null
+  return {
+    version: result.thesisVersion,
+    claims: result.claims.map((claim) => ({ lensId: claim.lensId, state: claim.state, evidenceHashes: claim.evidenceHashes })),
+  }
+}
+
+export async function runNvdaSlice(input: {
+  fetchImpl: FetchLike
+  store?: MemoryDeskStore
+  client?: LatestRunClient | SupabaseClient | null
+  now?: number
+}) {
+  const retrievedAt = new Date(input.now ?? Date.now()).toISOString()
+  const collected = await collectNvdaInputs(input.fetchImpl, retrievedAt)
+  const prior = input.client ? await loadLatestPrior(input.client, 'NVDA') : null
+  const result = runCompanyCycle({
+    symbol: 'NVDA',
+    archetype: collected.company.archetype,
+    observations: collected.observations,
+    sourceFailures: collected.failures,
+    prior,
+  })
+  return commitCompanyCycle(input.store || new MemoryDeskStore(), result)
+}
+
 export async function persistCycleResult(client: InsertClient, result: CompanyCycleResult) {
   const writes = await Promise.all([
     client.from('market_desk_runs').upsert({
@@ -172,6 +273,10 @@ export async function persistCycleResult(client: InsertClient, result: CompanyCy
       inbox: Boolean(result.event?.inbox),
       payload: result,
     }, { onConflict: 'idempotency_key' }),
+    ...result.evidence.map((observation) => client.from('market_desk_evidence').upsert(
+      evidenceRow(result.symbol, observation),
+      { onConflict: 'id' },
+    )),
     ...result.markers.map((marker) => client.from('market_desk_markers').upsert({
       id: marker.id,
       symbol: marker.symbol,

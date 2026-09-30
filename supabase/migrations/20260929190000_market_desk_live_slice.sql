@@ -21,6 +21,16 @@ create table if not exists public.market_desk_markers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.market_desk_evidence (
+  id text primary key,
+  symbol text not null,
+  content_hash text not null,
+  source_url text not null,
+  payload jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (symbol, content_hash)
+);
+
 create table if not exists public.market_desk_judgments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
@@ -63,6 +73,7 @@ create table if not exists public.market_desk_notifications (
 
 alter table public.market_desk_runs enable row level security;
 alter table public.market_desk_markers enable row level security;
+alter table public.market_desk_evidence enable row level security;
 alter table public.market_desk_judgments enable row level security;
 alter table public.market_desk_annotations enable row level security;
 alter table public.market_desk_monitoring_rules enable row level security;

@@ -68,6 +68,7 @@ export type CompanyCycleResult = {
   stance: 'favorable' | 'mixed' | 'unfavorable' | 'insufficient_evidence'
   thesisStatus: 'strengthened' | 'unchanged' | 'under_pressure' | 'invalidated'
   claims: CycleClaim[]
+  evidence: CycleObservation[]
   event: {
     id: string
     inbox: boolean
@@ -141,6 +142,7 @@ export function runCompanyCycle(input: CompanyCycleInput): CompanyCycleResult {
       stance: 'insufficient_evidence',
       thesisStatus: 'unchanged',
       claims: [],
+      evidence: [],
       event: null,
       markers: [],
       partialReasons: partialReasons.length ? partialReasons : ['No usable evidence was retrieved'],
@@ -154,14 +156,17 @@ export function runCompanyCycle(input: CompanyCycleInput): CompanyCycleResult {
     const observation = related[related.length - 1]
     const prior = input.prior?.claims.find((claim) => claim.lensId === lens.id)
     const transition = nextState(prior?.state || null, observation, !observation)
+    const evidenceHashes = related.map((item) => item.contentHash)
+    const evidenceChanged = Boolean(prior && observation)
+      && [...evidenceHashes].sort().join('|') !== [...(prior?.evidenceHashes || [])].sort().join('|')
     return {
       id: `${input.symbol.toLowerCase()}-${lens.id}`,
       lensId: lens.id,
       title: lens.title,
       state: transition.state,
       confidence: observation ? observation.confidence : 0,
-      evidenceHashes: related.map((item) => item.contentHash),
-      changed: Boolean(input.prior) && transition.changed,
+      evidenceHashes,
+      changed: Boolean(input.prior) && (transition.changed || evidenceChanged),
       effect: transition.effect,
     }
   })
@@ -212,6 +217,7 @@ export function runCompanyCycle(input: CompanyCycleInput): CompanyCycleResult {
     stance,
     thesisStatus,
     claims,
+    evidence: observations,
     event,
     markers,
     partialReasons,

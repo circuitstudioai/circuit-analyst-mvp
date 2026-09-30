@@ -1,16 +1,16 @@
 # Market Desk operator notes
 
-The live slice covers NVDA, COST, XOM, JPM, and HIMS. It does not send alerts and it does not accept user-selected watchlists.
+The hardened live slice covers NVDA only. COST, XOM, JPM, and HIMS remain fixture-backed preview companies. The slice does not send alerts and does not accept user-selected watchlists.
 
 ## Run one evidence pass
 
 `POST /api/market-desk/cycle` with `Authorization: Bearer $CIRCUIT_JOB_SECRET`.
 
-The job collects SEC submissions and adjusted daily prices, publishes a baseline or a materiality decision, and skips a company when the budget is exhausted. The response status is `completed`, `partial`, or `failed`. Partial means a source failed, a required lens had no evidence, or a company was skipped. Failed means a company had no usable evidence. Do not treat a failed run as a high-confidence thesis.
+The job loads the latest persisted NVDA thesis, fetches the newest SEC primary filing document and adjusted daily prices, extracts evidence passages for the NVDA research lenses, and publishes a baseline or materiality decision. The response status is `completed`, `partial`, or `failed`. Partial means a source failed or a required lens had no evidence. Failed means the run had no usable evidence. Do not treat a failed run as a high-confidence thesis.
 
 Running the job again with the same evidence reuses the idempotency key. It does not create a second event or a second chart marker.
 
-`GET /api/market-desk/cycle` with the same credential returns the runs held in the current server process. Durable rows are written only when Supabase is configured. Those tables have row-level security and no browser policies; the service role is the only writer.
+`GET /api/market-desk/cycle` with the same credential returns the latest persisted NVDA cycle. POST and GET fail closed when durable Supabase storage is unavailable. Runs, evidence records, and markers have row-level security and no browser policies; the service role is the only writer.
 
 ## Chart
 

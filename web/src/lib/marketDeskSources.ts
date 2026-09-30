@@ -4,6 +4,81 @@ import { ResearchLens } from './marketDeskTemplates'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
+export type FilingDocument = {
+  form: string
+  filingDate: string
+  sourceUrl: string
+}
+
+const lensTerms: Record<string, RegExp> = {
+  demand: /\b(demand|revenue|data center|orders?|bookings?)\b/i,
+  margins: /\b(margins?|gross profit|cost of revenue)\b/i,
+  concentration: /\b(concentration|customer|distributor|direct customer)\b/i,
+  retention: /\b(retention|renewal|membership|members?)\b/i,
+  traffic: /\b(traffic|transactions?|comparable sales|visits?)\b/i,
+  valuation: /\b(valuation|multiple|share price|market value)\b/i,
+  volume: /\b(volume|production|barrels?|boe)\b/i,
+  commodity: /\b(commodity|oil|gas|realization|benchmark)\b/i,
+  projects: /\b(project|capital expenditure|startup|execution)\b/i,
+  earnings: /\b(earnings|revenue|net income|net interest income)\b/i,
+  credit: /\b(credit|charge-offs?|delinquenc|allowance)\b/i,
+  capital: /\b(capital|cet1|liquidity|risk-weighted)\b/i,
+  growth: /\b(growth|subscriber|revenue|orders?)\b/i,
+  access: /\b(access|regulatory|fda|prescription|telehealth)\b/i,
+  quality: /\b(quality|margin|retention|profit|cash flow)\b/i,
+}
+
+function filingText(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function passageDirection(passage: string) {
+  if (/\b(declin(?:e|ed|ing)|decreas(?:e|ed|ing)|lower|fell|down|contract(?:ed|ion)|deteriorat)\b/i.test(passage)) return 'down' as const
+  if (/\b(increas(?:e|ed|ing)|higher|grew|growth|rose|up|expand(?:ed|ing)|strong)\b/i.test(passage)) return 'up' as const
+  return 'flat' as const
+}
+
+export function extractFilingObservations(input: {
+  html: string
+  filing: FilingDocument
+  lenses: ResearchLens[]
+  retrievedAt: string
+}): CycleObservation[] {
+  const text = filingText(input.html)
+  const passages = text.split(/(?<=[.!?])\s+/).filter((value) => value.length >= 24 && value.length <= 900)
+  return input.lenses.flatMap((lens) => {
+    const matcher = lensTerms[lens.id] || new RegExp(`\\b${lens.id}\\b`, 'i')
+    const passage = passages.find((candidate) => matcher.test(candidate))
+    if (!passage) return []
+    return [{
+      lensId: lens.id,
+      sourceType: 'filing' as const,
+      sourceName: `SEC ${input.filing.form}`,
+      sourceUrl: input.filing.sourceUrl,
+      passage,
+      normalizedFact: passage,
+      publishedAt: `${input.filing.filingDate}T00:00:00Z`,
+      retrievedAt: input.retrievedAt,
+      freshness: 'current' as const,
+      confidence: 0.75,
+      metric: `filing_text:${lens.id}`,
+      value: null,
+      unit: 'text',
+      direction: passageDirection(passage),
+      contentHash: contentHash(`${input.filing.sourceUrl}|${lens.id}|${passage}`),
+    }]
+  })
+}
+
 export function parseYahooChart(payload: unknown, retrievedAt: string) {
   const result = (payload as { chart?: { result?: Array<Record<string, unknown>> } })?.chart?.result?.[0]
   const timestamps = Array.isArray(result?.timestamp) ? result.timestamp as number[] : []
@@ -90,6 +165,23 @@ export function parseSecFilings(payload: unknown, cik: string, lenses: ResearchL
   })
 }
 
+export function parseSecFilingDocuments(payload: unknown, cik: string): FilingDocument[] {
+  const recent = (payload as { filings?: { recent?: Record<string, string[]> } })?.filings?.recent
+  if (!recent?.form || !recent.filingDate || !recent.accessionNumber || !recent.primaryDocument) return []
+  return recent.form.map((form, index) => ({
+    form,
+    filingDate: recent.filingDate[index],
+    accession: recent.accessionNumber[index],
+    document: recent.primaryDocument[index],
+  }))
+    .filter((row) => (row.form === '10-Q' || row.form === '10-K' || row.form === '8-K') && row.filingDate && row.accession && row.document)
+    .map((row) => ({
+      form: row.form,
+      filingDate: row.filingDate,
+      sourceUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${row.accession.replace(/-/g, '')}/${row.document}`,
+    }))
+}
+
 export function priceObservation(symbol: string, bars: PriceBar[], lensId: string, retrievedAt: string): CycleObservation | null {
   if (bars.length < 2) return null
   const last = bars[bars.length - 1]
@@ -135,5 +227,13 @@ export async function fetchJson(fetchImpl: FetchLike, url: string, headers: Head
     const response = await fetchImpl(url, { headers, cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`)
     return response.json()
+  })
+}
+
+export async function fetchText(fetchImpl: FetchLike, url: string, headers: HeadersInit = {}) {
+  return withRetry(async () => {
+    const response = await fetchImpl(url, { headers, cache: 'no-store' })
+    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`)
+    return response.text()
   })
 }

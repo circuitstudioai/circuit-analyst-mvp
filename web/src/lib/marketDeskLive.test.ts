@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildChartModel, explainCorporateMoves } from './marketDeskChart'
 import { commitCompanyCycle, MemoryDeskStore, runCompanyCycle } from './marketDeskCycle'
-import { annotationRecord, judgmentRecord, monitoringRefusal, persistCycleResult, runPilotSlice } from './marketDeskPilot'
-import { parseSecFilings, parseYahooChart, priceObservation, withRetry } from './marketDeskSources'
+import { annotationRecord, collectNvdaInputs, judgmentRecord, loadLatestPrior, monitoringRefusal, persistCycleResult, runPilotSlice } from './marketDeskPilot'
+import { extractFilingObservations, parseSecFilings, parseYahooChart, priceObservation, withRetry } from './marketDeskSources'
 import { currentPilotGateReport, researchTemplates, watchlistEligibility } from './marketDeskTemplates'
 
 const observation = {
@@ -85,6 +85,23 @@ describe('Market Desk live cycle', () => {
     expect(partial.stance).toBe('insufficient_evidence')
     expect(partial.event?.inbox).toBe(false)
   })
+
+  it('versions a thesis when new primary evidence changes even if the directional state is unchanged', () => {
+    const baseline = runCompanyCycle({
+      symbol: 'NVDA',
+      archetype: 'high_growth_platform',
+      observations: [{ ...observation, lensId: 'demand', direction: 'up', contentHash: 'first-filing' }],
+    })
+    const update = runCompanyCycle({
+      symbol: 'NVDA',
+      archetype: 'high_growth_platform',
+      prior: { version: 1, claims: baseline.claims.map((claim) => ({ lensId: claim.lensId, state: claim.state, evidenceHashes: claim.evidenceHashes })) },
+      observations: [{ ...observation, lensId: 'demand', direction: 'up', contentHash: 'second-filing' }],
+    })
+    expect(update.claims.find((claim) => claim.lensId === 'demand')?.changed).toBe(true)
+    expect(update.thesisVersion).toBe(2)
+    expect(update.event?.evidenceIds).toEqual(['evidence-second-filing'])
+  })
 })
 
 describe('research-aware chart', () => {
@@ -127,6 +144,24 @@ describe('research-aware chart', () => {
     }, 2)).rejects.toThrow('down')
     expect(calls).toBe(2)
   })
+
+  it('creates lens evidence from the primary filing body rather than filing metadata', () => {
+    const observations = extractFilingObservations({
+      html: '<html><body><p>Data Center revenue increased 154% year over year as demand remained strong.</p><p>Gross margin declined to 68 percent because of the product transition.</p><p>One direct customer represented 13% of total revenue.</p></body></html>',
+      filing: {
+        form: '10-Q',
+        filingDate: '2026-08-27',
+        sourceUrl: 'https://www.sec.gov/Archives/nvda-10q.htm',
+      },
+      lenses: researchTemplates.high_growth_platform.lenses,
+      retrievedAt: '2026-09-29T00:00:00Z',
+    })
+    expect(observations.map((item) => item.lensId)).toEqual(['demand', 'margins', 'concentration'])
+    expect(observations[0].passage).toMatch(/Data Center revenue increased/)
+    expect(observations[0].direction).toBe('up')
+    expect(observations[1].direction).toBe('down')
+    expect(observations.every((item) => item.sourceUrl.endsWith('nvda-10q.htm'))).toBe(true)
+  })
 })
 
 describe('later-phase gates', () => {
@@ -167,6 +202,43 @@ describe('later-phase gates', () => {
       },
     }, result)
     expect(tables).toContain('market_desk_runs')
+    expect(tables).toContain('market_desk_evidence')
     expect(errors).toEqual(result.markers.map(() => 'marker write failed'))
+  })
+
+  it('restores the prior thesis from the durable latest run', async () => {
+    const priorResult = runCompanyCycle({
+      symbol: 'NVDA',
+      archetype: 'high_growth_platform',
+      observations: [{ ...observation, lensId: 'demand', direction: 'up', contentHash: 'demand-baseline' }],
+    })
+    const query = {
+      select: () => query,
+      eq: () => query,
+      order: () => query,
+      limit: () => query,
+      maybeSingle: async () => ({ data: { payload: priorResult }, error: null }),
+    }
+    const restored = await loadLatestPrior({ from: () => query }, 'NVDA')
+    expect(restored?.version).toBe(1)
+    expect(restored?.claims[0]).toMatchObject({ lensId: 'demand', state: 'supported' })
+  })
+
+  it('collects NVDA evidence from the latest primary filing document', async () => {
+    const seen: string[] = []
+    const sec = { filings: { recent: { form: ['8-K', '10-Q'], filingDate: ['2026-09-10', '2026-08-27'], accessionNumber: ['0001045810-26-000002', '0001045810-26-000001'], primaryDocument: ['nvda-8k.htm', 'nvda-10q.htm'] } } }
+    const yahoo = { chart: { result: [{ timestamp: [Date.parse('2026-08-01T00:00:00Z') / 1000, Date.parse('2026-09-19T00:00:00Z') / 1000], indicators: { quote: [{ open: [100, 110], high: [101, 112], low: [99, 108], close: [100, 111], volume: [1, 2] }], adjclose: [{ adjclose: [100, 111] }] } }] } }
+    const filingHtml = '<p>Data Center revenue increased as demand remained strong.</p><p>Gross margin declined during the product transition.</p><p>One direct customer represented 13% of revenue.</p>'
+    const fetchImpl = async (url: string) => {
+      seen.push(url)
+      if (url.includes('submissions')) return new Response(JSON.stringify(sec), { status: 200 })
+      if (url.includes('Archives')) return new Response(filingHtml, { status: 200 })
+      return new Response(JSON.stringify(yahoo), { status: 200 })
+    }
+    const collected = await collectNvdaInputs(fetchImpl, '2026-09-29T00:00:00Z')
+    expect(seen.some((url) => url.includes('/Archives/edgar/data/1045810/'))).toBe(true)
+    expect(seen.some((url) => url.endsWith('/nvda-10q.htm'))).toBe(true)
+    expect(collected.observations.filter((item) => item.sourceType === 'filing')).toHaveLength(3)
+    expect(collected.observations.find((item) => item.lensId === 'margins')?.passage).toMatch(/Gross margin declined/)
   })
 })

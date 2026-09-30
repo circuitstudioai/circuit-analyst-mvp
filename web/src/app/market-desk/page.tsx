@@ -3,6 +3,8 @@ import { marketDeskFixture } from '@/lib/marketDeskFixtures'
 import { assertMarketDeskFixture, buildMarketDeskHref, marketDeskRequestHref, resolveMarketDeskLocation } from '@/lib/marketDesk'
 import { isMarketDeskVnextRouteAvailable, marketDeskVnextRollout } from '@/lib/marketDeskRollout'
 import { MarketDeskExperience } from './MarketDeskExperience'
+import { loadLatestCycle } from '@/lib/marketDeskPilot'
+import { serviceClient } from '@/lib/supabase'
 
 export const metadata = {
   title: 'Living Thesis | Circuit Market Desk',
@@ -16,5 +18,7 @@ export default async function MarketDeskPage({ searchParams }: { searchParams: P
   const search = await searchParams
   const canonical = buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, search))
   if (marketDeskRequestHref(search) !== canonical) redirect(canonical)
-  return <MarketDeskExperience fixture={marketDeskFixture} rollout={rollout} search={search} />
+  const client = serviceClient()
+  const liveNvda = client ? await loadLatestCycle(client, 'NVDA').catch(() => null) : null
+  return <MarketDeskExperience fixture={marketDeskFixture} rollout={rollout} search={search} liveNvda={liveNvda} />
 }
