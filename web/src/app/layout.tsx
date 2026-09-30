@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
+import { isMarketDeskVnextPromoted, marketDeskVnextRollout } from "@/lib/marketDeskRollout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,9 +25,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const vnextPromoted = isMarketDeskVnextPromoted(marketDeskVnextRollout());
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body><SiteNav />{children}<SiteFooter /></body>
+      <body><SiteNav vnextPromoted={vnextPromoted} />{children}<SiteFooter /></body>
     </html>
   );
 }

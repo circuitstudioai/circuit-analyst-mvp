@@ -153,6 +153,12 @@ create table if not exists research_messages (
   created_at timestamptz not null default now()
 );
 
+-- These tables are server-only. The service role bypasses RLS; browser clients
+-- must not be able to read or mutate analyst checkpoints or conversations.
+alter table analysis_stages enable row level security;
+alter table research_threads enable row level security;
+alter table research_messages enable row level security;
+
 create table if not exists analysis_jobs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
