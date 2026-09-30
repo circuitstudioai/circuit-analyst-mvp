@@ -215,10 +215,26 @@ export type StoredJudgment = {
   savedAt: string
 }
 
+export type ChartRange = '1m' | '3m' | '1y' | '5y'
+export type ChartMode = 'line' | 'candle'
+
+export type ChartAnnotation = {
+  id: string
+  symbol: string
+  text: string
+  range: ChartRange
+  mode: ChartMode
+  createdAt: string
+  thesisVersion: number | null
+  eventId: string | null
+  evidenceId: string | null
+}
+
 export type MarketDeskSessionState = {
   mandates: Record<string, MandateKind>
   concerns: Record<string, string>
   judgments: Record<string, StoredJudgment>
+  annotations: ChartAnnotation[]
   coverageAcknowledged: boolean
 }
 
@@ -228,6 +244,8 @@ export type MarketDeskSearchInput = {
   event?: string | string[]
   version?: string | string[]
   evidence?: string | string[]
+  range?: string | string[]
+  chart?: string | string[]
 }
 
 export type MarketDeskLocation = {
@@ -236,6 +254,8 @@ export type MarketDeskLocation = {
   eventId: string | null
   version: number | null
   evidenceId: string | null
+  range: ChartRange
+  chart: ChartMode
 }
 
 export const marketDeskSessionKey = 'market-desk-session-v1'
@@ -243,8 +263,11 @@ export const marketDeskSessionKey = 'market-desk-session-v1'
 const mandateKinds = new Set<MandateKind>(['owned', 'watching', 'exploring'])
 const judgmentActions = new Set<JudgmentAction>(['keep', 'update', 'watch'])
 
+const chartRanges = new Set<ChartRange>(['1m', '3m', '1y', '5y'])
+const chartModes = new Set<ChartMode>(['line', 'candle'])
+
 export function emptyMarketDeskSession(): MarketDeskSessionState {
-  return { mandates: {}, concerns: {}, judgments: {}, coverageAcknowledged: false }
+  return { mandates: {}, concerns: {}, judgments: {}, annotations: [], coverageAcknowledged: false }
 }
 
 function firstSearchValue(value: string | string[] | undefined) {
@@ -281,10 +304,28 @@ export function parseMarketDeskSession(raw: string | null): MarketDeskSessionSta
         }
       }
     }
+    const annotations = Array.isArray(value.annotations) ? value.annotations.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const record = item as Partial<ChartAnnotation>
+      if (!record.id || !record.symbol || typeof record.text !== 'string' || !record.text.trim()) return []
+      if (!record.range || !chartRanges.has(record.range) || !record.mode || !chartModes.has(record.mode)) return []
+      return [{
+        id: record.id,
+        symbol: record.symbol.toUpperCase(),
+        text: record.text.trim().slice(0, 280),
+        range: record.range,
+        mode: record.mode,
+        createdAt: typeof record.createdAt === 'string' ? record.createdAt : '',
+        thesisVersion: typeof record.thesisVersion === 'number' ? record.thesisVersion : null,
+        eventId: typeof record.eventId === 'string' ? record.eventId : null,
+        evidenceId: typeof record.evidenceId === 'string' ? record.evidenceId : null,
+      }]
+    }).slice(0, 40) : []
     return {
       mandates,
       concerns,
       judgments,
+      annotations,
       coverageAcknowledged: value.coverageAcknowledged === true,
     }
   } catch {
@@ -298,8 +339,12 @@ export function resolveMarketDeskLocation(fixture: MarketDeskFixture, input: Mar
   const event = fixture.events.find((item) => item.id === firstSearchValue(input.event))
   const requestedCompany = fixture.companies.find((item) => item.symbol === firstSearchValue(input.company).toUpperCase())
   const company = (event ? fixture.companies.find((item) => item.id === event.companyId) : requestedCompany) || fallback
+  const requestedRange = firstSearchValue(input.range) as ChartRange
+  const requestedChart = firstSearchValue(input.chart) as ChartMode
+  const range = chartRanges.has(requestedRange) ? requestedRange : '1y'
+  const chart = chartModes.has(requestedChart) ? requestedChart : 'line'
   if (event) {
-    return { view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null }
+    return { view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null, range, chart }
   }
 
   const requestedView = firstSearchValue(input.view)
@@ -310,7 +355,7 @@ export function resolveMarketDeskLocation(fixture: MarketDeskFixture, input: Mar
     : null
   const requestedEvidence = firstSearchValue(input.evidence)
   const evidenceId = view === 'thesis' && company.evidence.some((item) => item.id === requestedEvidence) ? requestedEvidence : null
-  return { view, companySymbol: company.symbol, eventId: null, version, evidenceId }
+  return { view, companySymbol: company.symbol, eventId: null, version, evidenceId, range, chart }
 }
 
 export function marketDeskRequestHref(input: MarketDeskSearchInput) {
@@ -334,6 +379,8 @@ export function buildMarketDeskHref(location: MarketDeskLocation) {
     if (location.version) params.set('version', String(location.version))
     if (location.evidenceId) params.set('evidence', location.evidenceId)
   }
+  if (location.range !== '1y') params.set('range', location.range)
+  if (location.chart !== 'line') params.set('chart', location.chart)
   const query = params.toString()
   return query ? `/market-desk?${query}` : '/market-desk'
 }

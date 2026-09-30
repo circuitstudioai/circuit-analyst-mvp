@@ -25,6 +25,8 @@ import {
   resolveMarketDeskLocation,
 } from '@/lib/marketDesk'
 import { MarketDeskVnextRollout } from '@/lib/marketDeskRollout'
+import { CompanyCycleResult, CycleMarker } from '@/lib/marketDeskCycle'
+import { ResearchChart } from './ResearchChart'
 import styles from './marketDesk.module.css'
 
 const categoryFilters = [
@@ -85,7 +87,7 @@ function CompanyRail({ companies, activeId, onSelect }: { companies: CompanyDesk
   </aside>
 }
 
-function ThesisView({ company, selected, onOpenVersion, onOpenEvidence }: { company: CompanyDeskRecord; selected: ThesisVersion; onOpenVersion: (version: number | null) => void; onOpenEvidence: (id: string) => void }) {
+function ThesisView({ company, selected, onOpenVersion, onOpenEvidence, children }: { company: CompanyDeskRecord; selected: ThesisVersion; onOpenVersion: (version: number | null) => void; onOpenEvidence: (id: string) => void; children?: React.ReactNode }) {
   const previous = company.thesisVersions.find((version) => version.version === selected.version - 1)
   const diff = previous ? buildThesisDiff(previous, selected) : null
   return <section className={styles.thesisView} aria-labelledby="thesis-title">
@@ -114,6 +116,7 @@ function ThesisView({ company, selected, onOpenVersion, onOpenEvidence }: { comp
       <article><span>What appears priced in</span><p>{company.pricedIn}</p></article>
     </div>
     <section className={styles.invalidation}><div><span>What breaks the case</span><h2>Invalidation conditions</h2></div><ol>{company.invalidation.map((item) => <li key={item}>{item}</li>)}</ol></section>
+    {children}
     {company.concern ? <p className={styles.concernNote}><b>Your concern.</b> {company.concern}</p> : null}
   </section>
 }
@@ -132,7 +135,7 @@ function DecisionObjectView({ event }: { event: ResearchEvent }) {
   </section>
 }
 
-function DecisionRoom({ event, company, judgment, onJudge, onClear, onBack }: { event: ResearchEvent; company: CompanyDeskRecord; judgment?: MarketDeskSessionState['judgments'][string]; onJudge: (action: JudgmentAction, condition?: string) => void; onClear: () => void; onBack: () => void }) {
+function DecisionRoom({ event, company, judgment, onJudge, onClear, onBack, children }: { event: ResearchEvent; company: CompanyDeskRecord; judgment?: MarketDeskSessionState['judgments'][string]; onJudge: (action: JudgmentAction, condition?: string) => void; onClear: () => void; onBack: () => void; children?: React.ReactNode }) {
   const [condition, setCondition] = useState(judgment?.condition || '')
   const evidence = event.evidenceIds.map((id) => company.evidence.find((item) => item.id === id)).filter((item): item is EvidenceItem => Boolean(item))
   return <section className={styles.room} aria-labelledby="room-title">
@@ -147,6 +150,7 @@ function DecisionRoom({ event, company, judgment, onJudge, onClear, onBack }: { 
       <article><span>Strongest bear interpretation</span><p>{event.bearInterpretation}</p></article>
     </div>
     <DecisionObjectView event={event} />
+    {children}
     <section className={styles.evidenceTrail}><div className={styles.sectionIntro}><span>Evidence trail</span><h2>From source to thesis effect</h2></div>{evidence.map((item) => <article key={item.id}><div><span>{item.sourceName}</span><StatePill value={item.freshness}>{item.freshness}</StatePill></div><blockquote>{item.passage}</blockquote><p><b>Normalized fact</b>{item.normalizedFact}</p><a href={item.sourceUrl} target="_blank" rel="noreferrer">Inspect source ↗</a></article>)}</section>
     <section className={styles.judgmentBox}>
       <div><span>Your checkpoint</span><h2>The desk informs. You decide.</h2><p>Your judgment is stored separately from the system thesis.</p></div>
@@ -225,7 +229,7 @@ function EvidenceDrawer({ item, onClose }: { item: EvidenceItem; onClose: () => 
   </div>
 }
 
-export function MarketDeskExperience({ fixture, rollout, search }: { fixture: MarketDeskFixture; rollout: MarketDeskVnextRollout; search: MarketDeskSearchInput }) {
+export function MarketDeskExperience({ fixture, rollout, search, liveNvda }: { fixture: MarketDeskFixture; rollout: MarketDeskVnextRollout; search: MarketDeskSearchInput; liveNvda: CompanyCycleResult | null }) {
   const router = useRouter()
   const location = useMemo(() => resolveMarketDeskLocation(fixture, search), [fixture, search])
   const sessionRaw = useSyncExternalStore(subscribeToMarketDeskSession, readMarketDeskSession, () => serverSessionSnapshot)
@@ -247,6 +251,9 @@ export function MarketDeskExperience({ fixture, rollout, search }: { fixture: Ma
   const go = useCallback((next: MarketDeskLocation) => {
     router.push(buildMarketDeskHref(next), { scroll: false })
   }, [router])
+  const visit = useCallback((next: Partial<MarketDeskLocation>) => {
+    go({ ...location, ...next })
+  }, [go, location])
   const closeEvidence = useCallback(() => {
     router.replace(buildMarketDeskHref({ ...location, evidenceId: null }), { scroll: false })
   }, [location, router])
@@ -255,32 +262,62 @@ export function MarketDeskExperience({ fixture, rollout, search }: { fixture: Ma
     writeMarketDeskSession(recipe(session || emptyMarketDeskSession()))
   }
 
+  const chartMarkers: CycleMarker[] = fixture.events.filter((event) => event.companyId === activeCompany.id && event.evidenceIds[0]).map((event) => ({
+    id: `fixture-${event.id}`,
+    symbol: activeCompany.symbol,
+    date: event.publishedAt.slice(0, 10),
+    evidenceId: event.evidenceIds[0],
+    eventId: event.id,
+    label: event.title,
+  }))
+  const chart = <ResearchChart
+    symbol={activeCompany.symbol}
+    range={location.range}
+    mode={location.chart}
+    markers={chartMarkers}
+    annotations={session?.annotations || []}
+    onRange={(range) => visit({ range })}
+    onMode={(chartMode) => visit({ chart: chartMode })}
+    onMarker={(eventId) => {
+      const event = fixture.events.find((item) => item.id === eventId)
+      const company = companies.find((item) => item.id === event?.companyId)
+      if (!event || !company) return
+      visit({ view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null })
+    }}
+    onAnnotate={(text) => updateSession((current) => ({ ...current, annotations: [...current.annotations, { id: `note-${Date.now()}`, symbol: activeCompany.symbol, text, range: location.range, mode: location.chart, createdAt: new Date().toISOString(), thesisVersion: selectedThesis.version, eventId: activeEvent?.id || null, evidenceId: location.evidenceId }].slice(-40) }))}
+  />
+
   return <main className={styles.shell}>
     <div className={styles.prototypeBar}><span>{rollout === 'preview' ? 'Private preview' : 'Market Desk vNext'}</span><p>Five-company preview · fixture evidence · monitoring is not active</p><Link href="/desk">Open live research ↗</Link></div>
     <div className={styles.workspace}>
       <CompanyRail companies={companies} activeId={activeCompany.id} onSelect={(id) => {
         const company = companies.find((item) => item.id === id)
-        if (company) go({ view: 'thesis', companySymbol: company.symbol, eventId: null, version: null, evidenceId: null })
+        if (company) visit({ view: 'thesis', companySymbol: company.symbol, eventId: null, version: null, evidenceId: null })
       }} />
       <div className={styles.mainColumn}>
+        {activeCompany.symbol === 'NVDA' && liveNvda ? <section className={styles.liveCycle} aria-label="Latest persisted NVDA research cycle">
+          <div><span>Live NVDA evidence cycle</span><strong>Thesis v{liveNvda.thesisVersion ?? '—'} · {liveNvda.status}</strong></div>
+          <p>{liveNvda.event?.title || 'No new evidence event was created.'}</p>
+          <small>{liveNvda.evidence.length} evidence records · {liveNvda.partialReasons.length ? liveNvda.partialReasons.join(' · ') : 'All required evidence lenses present'}</small>
+        </section> : null}
         <nav className={styles.localNav} aria-label="Market Desk sections">
-          <button type="button" aria-current={!activeEvent && location.view === 'inbox' ? 'page' : undefined} onClick={() => go({ view: 'inbox', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Change inbox <b>{fixture.events.length}</b></button>
-          <button type="button" aria-current={!activeEvent && location.view === 'thesis' ? 'page' : undefined} onClick={() => go({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Living thesis</button>
-          <button type="button" aria-current={!activeEvent && location.view === 'lab' ? 'page' : undefined} onClick={() => go({ view: 'lab', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Decision Lab</button>
+          <button type="button" aria-current={!activeEvent && location.view === 'inbox' ? 'page' : undefined} onClick={() => visit({ view: 'inbox', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Change inbox <b>{fixture.events.length}</b></button>
+          <button type="button" aria-current={!activeEvent && location.view === 'thesis' ? 'page' : undefined} onClick={() => visit({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Living thesis</button>
+          <button type="button" aria-current={!activeEvent && location.view === 'lab' ? 'page' : undefined} onClick={() => visit({ view: 'lab', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>Decision Lab</button>
           <label>Mandate<select aria-label={`${activeCompany.symbol} mandate`} value={activeCompany.mandate} onChange={(event) => updateSession((current) => ({ ...current, mandates: { ...current.mandates, [activeCompany.id]: event.target.value as MandateKind } }))}><option value="owned">Owned</option><option value="watching">Watching</option><option value="exploring">Exploring</option></select></label>
         </nav>
         {!session ? <section className={styles.inbox}><p className={styles.eyebrow}>Loading preview session</p></section> : activeEvent ? <DecisionRoom key={activeEvent.id} event={activeEvent} company={activeCompany} judgment={session.judgments[activeEvent.id]} onJudge={(action, condition = '') => updateSession((current) => ({ ...current, judgments: { ...current.judgments, [activeEvent.id]: { action, condition: action === 'watch' ? condition.trim() : '', savedAt: new Date().toISOString() } } }))} onClear={() => updateSession((current) => {
           const judgments = { ...current.judgments }
           delete judgments[activeEvent.id]
           return { ...current, judgments }
-        })} onBack={() => go({ view: 'inbox', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })} /> : location.view === 'thesis' ? <ThesisView company={activeCompany} selected={selectedThesis} onOpenVersion={(version) => go({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version, evidenceId: null })} onOpenEvidence={(id) => go({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version: location.version, evidenceId: id })} /> : location.view === 'lab' ? <DecisionLab fixture={fixture} activeCompany={activeCompany} /> : !session.coverageAcknowledged ? <CoverageSetup companies={companies} onMandate={(id, mandate) => updateSession((current) => ({ ...current, mandates: { ...current.mandates, [id]: mandate } }))} onConcern={(id, concern) => updateSession((current) => ({ ...current, concerns: { ...current.concerns, [id]: concern } }))} onContinue={() => updateSession((current) => ({ ...current, coverageAcknowledged: true }))} /> : <section className={styles.inbox}>
+        })} onBack={() => visit({ view: 'inbox', companySymbol: activeCompany.symbol, eventId: null, version: null, evidenceId: null })}>{chart}</DecisionRoom> : location.view === 'thesis' ? <ThesisView company={activeCompany} selected={selectedThesis} onOpenVersion={(version) => visit({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version, evidenceId: null })} onOpenEvidence={(id) => visit({ view: 'thesis', companySymbol: activeCompany.symbol, eventId: null, version: location.version, evidenceId: id })}>{chart}</ThesisView> : location.view === 'lab' ? <DecisionLab fixture={fixture} activeCompany={activeCompany} /> : !session.coverageAcknowledged ? <CoverageSetup companies={companies} onMandate={(id, mandate) => updateSession((current) => ({ ...current, mandates: { ...current.mandates, [id]: mandate } }))} onConcern={(id, concern) => updateSession((current) => ({ ...current, concerns: { ...current.concerns, [id]: concern } }))} onContinue={() => updateSession((current) => ({ ...current, coverageAcknowledged: true }))} /> : <section className={styles.inbox}>
           <header className={styles.inboxHeader}><div><p className={styles.eyebrow}>Research brief · {formatDate(fixture.asOf)}</p><h1>What deserves your attention</h1><p>{fixture.processedSilently} updates processed quietly. <strong>{thesisChanges} may change a thesis.</strong></p></div><div className={styles.inboxCount}><strong>{fixture.events.length}</strong><span>open<br/>changes</span></div></header>
           <div className={styles.filters}>{categoryFilters.map((item) => <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}>{item.label}</button>)}</div>
           <div className={styles.eventList}>{visibleEvents.map((event, index) => {
             const company = companies.find((item) => item.id === event.companyId)!
             const claim = company.currentThesis.claims.find((item) => item.id === event.affectedClaimId)!
             return <article key={event.id} className={styles.eventCard} data-state={event.state}>
-              <button type="button" onClick={() => go({ view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null })} aria-label={`Open ${company.symbol}: ${event.title}`}>
+              <button type="button" onClick={() => visit({ view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null })} aria-label={`Open ${company.symbol}: ${event.title}`}>
                 <span className={styles.eventRank}>{String(index + 1).padStart(2, '0')}</span>
                 <div className={styles.eventCompany}><span>{company.symbol}</span><small>{company.name}</small></div>
                 <div className={styles.eventBody}><div><StatePill value={event.category}>{marketDeskLabels.category[event.category]}</StatePill>{event.state !== 'ready' && <StatePill value={event.state}>{event.state}</StatePill>}</div><h2>{event.title}</h2><p>{event.whyItMatters}</p><span>Affects: <b>{claim.title}</b></span></div>

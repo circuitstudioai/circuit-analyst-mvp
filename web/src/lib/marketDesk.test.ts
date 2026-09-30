@@ -97,6 +97,7 @@ describe('Market Desk preview state', () => {
     })
     const session = parseMarketDeskSession(raw)
 
+    expect(session.annotations).toEqual([])
     expect(session.coverageAcknowledged).toBe(true)
     expect(session.mandates).toEqual({ 'company-nvda': 'owned' })
     expect(session.concerns['company-nvda']).toBe('Margin durability')
@@ -111,14 +112,14 @@ describe('Market Desk preview state', () => {
 
   it('builds a restorable location for a company, prior version, and evidence record', () => {
     const location = resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'nvda', version: '1', evidence: 'nvda-e1' })
-    expect(location).toEqual({ view: 'thesis', companySymbol: 'NVDA', eventId: null, version: 1, evidenceId: 'nvda-e1' })
+    expect(location).toEqual({ view: 'thesis', companySymbol: 'NVDA', eventId: null, version: 1, evidenceId: 'nvda-e1', range: '1y', chart: 'line' })
     expect(buildMarketDeskHref(location)).toBe('/market-desk?view=thesis&company=NVDA&version=1&evidence=nvda-e1')
     expect(resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'NVDA', version: '2' }).version).toBeNull()
   })
 
   it('opens a change on the company that owns it and ignores unknown records', () => {
     const location = resolveMarketDeskLocation(marketDeskFixture, { company: 'COST', event: 'event-hims-regulation', evidence: 'cost-e1' })
-    expect(location).toEqual({ view: 'inbox', companySymbol: 'HIMS', eventId: 'event-hims-regulation', version: null, evidenceId: null })
+    expect(location).toEqual({ view: 'inbox', companySymbol: 'HIMS', eventId: 'event-hims-regulation', version: null, evidenceId: null, range: '1y', chart: 'line' })
     expect(buildMarketDeskHref(location)).toBe('/market-desk?company=HIMS&event=event-hims-regulation')
     expect(buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, { company: 'NOPE', view: 'nope' }))).toBe('/market-desk')
     const canonical = buildMarketDeskHref(resolveMarketDeskLocation(marketDeskFixture, { view: 'thesis', company: 'NVDA', version: '1' }))
