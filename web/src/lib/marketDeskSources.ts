@@ -47,6 +47,34 @@ function passageDirection(passage: string) {
   return 'flat' as const
 }
 
+function lensPassageScore(lensId: string, passage: string) {
+  const directional = /\b(increas|decreas|grew|growth|declin|higher|lower|rose|fell|strong|weak)\w*/i.test(passage) ? 2 : 0
+  const quantified = /\b\d+(?:\.\d+)?\s*%|\$\s*\d/i.test(passage) ? 2 : 0
+  if (lensId === 'demand') {
+    return (/data center/i.test(passage) ? 8 : 0)
+      + (/\bdemand\b/i.test(passage) ? 6 : 0)
+      + (/\brevenue\b/i.test(passage) ? 2 : 0)
+      + directional + quantified
+  }
+  if (lensId === 'margins') {
+    return (/gross margin/i.test(passage) ? 10 : 0)
+      + (/\bmargin\b/i.test(passage) ? 4 : 0)
+      + directional + quantified
+  }
+  if (lensId === 'concentration') {
+    return (/customer concentration/i.test(passage) ? 10 : 0)
+      + (/\bconcentration\b/i.test(passage) ? 6 : 0)
+      + (/\bcustomer\b/i.test(passage) ? 2 : 0)
+      + (/represented|accounted for/i.test(passage) ? 4 : 0)
+      + quantified
+  }
+  return (lensTerms[lensId]?.test(passage) ? 5 : 0) + directional + quantified
+}
+
+function minimumLensScore(lensId: string) {
+  return lensId === 'margins' ? 6 : lensId === 'demand' || lensId === 'concentration' ? 7 : 5
+}
+
 export function extractFilingObservations(input: {
   html: string
   filing: FilingDocument
@@ -56,9 +84,12 @@ export function extractFilingObservations(input: {
   const text = filingText(input.html)
   const passages = text.split(/(?<=[.!?])\s+/).filter((value) => value.length >= 24 && value.length <= 900)
   return input.lenses.flatMap((lens) => {
-    const matcher = lensTerms[lens.id] || new RegExp(`\\b${lens.id}\\b`, 'i')
-    const passage = passages.find((candidate) => matcher.test(candidate))
-    if (!passage) return []
+    const ranked = passages
+      .map((candidate) => ({ candidate, score: lensPassageScore(lens.id, candidate) }))
+      .sort((a, b) => b.score - a.score)
+    const best = ranked[0]
+    if (!best || best.score < minimumLensScore(lens.id)) return []
+    const passage = best.candidate
     return [{
       lensId: lens.id,
       sourceType: 'filing' as const,
