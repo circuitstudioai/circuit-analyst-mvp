@@ -206,6 +206,138 @@ export function resolveDecisionObject(input: Pick<ResearchEvent, 'eventType' | '
   return match
 }
 
+export type DeskSurface = 'inbox' | 'thesis' | 'lab'
+export type JudgmentAction = 'keep' | 'update' | 'watch'
+
+export type StoredJudgment = {
+  action: JudgmentAction
+  condition: string
+  savedAt: string
+}
+
+export type MarketDeskSessionState = {
+  mandates: Record<string, MandateKind>
+  concerns: Record<string, string>
+  judgments: Record<string, StoredJudgment>
+  coverageAcknowledged: boolean
+}
+
+export type MarketDeskSearchInput = {
+  view?: string | string[]
+  company?: string | string[]
+  event?: string | string[]
+  version?: string | string[]
+  evidence?: string | string[]
+}
+
+export type MarketDeskLocation = {
+  view: DeskSurface
+  companySymbol: string
+  eventId: string | null
+  version: number | null
+  evidenceId: string | null
+}
+
+export const marketDeskSessionKey = 'market-desk-session-v1'
+
+const mandateKinds = new Set<MandateKind>(['owned', 'watching', 'exploring'])
+const judgmentActions = new Set<JudgmentAction>(['keep', 'update', 'watch'])
+
+export function emptyMarketDeskSession(): MarketDeskSessionState {
+  return { mandates: {}, concerns: {}, judgments: {}, coverageAcknowledged: false }
+}
+
+function firstSearchValue(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw?.trim() || ''
+}
+
+export function parseMarketDeskSession(raw: string | null): MarketDeskSessionState {
+  if (!raw) return emptyMarketDeskSession()
+  try {
+    const value = JSON.parse(raw) as Partial<MarketDeskSessionState>
+    const mandates: Record<string, MandateKind> = {}
+    if (value.mandates && typeof value.mandates === 'object') {
+      for (const [id, kind] of Object.entries(value.mandates)) {
+        if (typeof id === 'string' && mandateKinds.has(kind)) mandates[id] = kind
+      }
+    }
+    const concerns: Record<string, string> = {}
+    if (value.concerns && typeof value.concerns === 'object') {
+      for (const [id, concern] of Object.entries(value.concerns)) {
+        if (typeof concern === 'string') concerns[id] = concern.slice(0, 280)
+      }
+    }
+    const judgments: Record<string, StoredJudgment> = {}
+    if (value.judgments && typeof value.judgments === 'object') {
+      for (const [id, judgment] of Object.entries(value.judgments)) {
+        if (!judgment || typeof judgment !== 'object') continue
+        const record = judgment as Partial<StoredJudgment>
+        if (!record.action || !judgmentActions.has(record.action)) continue
+        judgments[id] = {
+          action: record.action,
+          condition: record.action === 'watch' && typeof record.condition === 'string' ? record.condition.trim().slice(0, 280) : '',
+          savedAt: typeof record.savedAt === 'string' ? record.savedAt : '',
+        }
+      }
+    }
+    return {
+      mandates,
+      concerns,
+      judgments,
+      coverageAcknowledged: value.coverageAcknowledged === true,
+    }
+  } catch {
+    return emptyMarketDeskSession()
+  }
+}
+
+export function resolveMarketDeskLocation(fixture: MarketDeskFixture, input: MarketDeskSearchInput = {}): MarketDeskLocation {
+  const fallback = fixture.companies[0]
+  if (!fallback) throw new Error('Market Desk fixture has no companies')
+  const event = fixture.events.find((item) => item.id === firstSearchValue(input.event))
+  const requestedCompany = fixture.companies.find((item) => item.symbol === firstSearchValue(input.company).toUpperCase())
+  const company = (event ? fixture.companies.find((item) => item.id === event.companyId) : requestedCompany) || fallback
+  if (event) {
+    return { view: 'inbox', companySymbol: company.symbol, eventId: event.id, version: null, evidenceId: null }
+  }
+
+  const requestedView = firstSearchValue(input.view)
+  const view: DeskSurface = requestedView === 'thesis' || requestedView === 'lab' ? requestedView : 'inbox'
+  const requestedVersion = Number(firstSearchValue(input.version))
+  const version = view === 'thesis' && company.thesisVersions.some((item) => item.version === requestedVersion) && requestedVersion !== company.currentThesis.version
+    ? requestedVersion
+    : null
+  const requestedEvidence = firstSearchValue(input.evidence)
+  const evidenceId = view === 'thesis' && company.evidence.some((item) => item.id === requestedEvidence) ? requestedEvidence : null
+  return { view, companySymbol: company.symbol, eventId: null, version, evidenceId }
+}
+
+export function marketDeskRequestHref(input: MarketDeskSearchInput) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(input)) {
+    const raw = Array.isArray(value) ? value[0] : value
+    if (typeof raw === 'string' && raw.length) params.append(key, raw)
+  }
+  const query = params.toString()
+  return query ? `/market-desk?${query}` : '/market-desk'
+}
+
+export function buildMarketDeskHref(location: MarketDeskLocation) {
+  const params = new URLSearchParams()
+  if (location.eventId) {
+    params.set('company', location.companySymbol)
+    params.set('event', location.eventId)
+  } else if (location.view === 'thesis' || location.view === 'lab') {
+    params.set('view', location.view)
+    params.set('company', location.companySymbol)
+    if (location.version) params.set('version', String(location.version))
+    if (location.evidenceId) params.set('evidence', location.evidenceId)
+  }
+  const query = params.toString()
+  return query ? `/market-desk?${query}` : '/market-desk'
+}
+
 export function buildDecisionRoomResearchHref(company: CompanyDeskRecord, event: ResearchEvent) {
   const claim = company.currentThesis.claims.find((item) => item.id === event.affectedClaimId)
   const question = [
