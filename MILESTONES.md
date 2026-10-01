@@ -1,5 +1,7 @@
 # Circuit Analyst MVP — Milestones
 
+> **Legacy roadmap:** this file tracks the original question-first Analyst MVP. It does not describe Market Desk vNext delivery status. See `docs/MARKET_DESK_VNEXT_PRD.md` for the current Market Desk milestone matrix and remaining gates.
+
 ## Goal
 Ship a working public MVP for validation + virality, deployed on Vercel, with Supabase persistence and Gemini-powered explanation layer.
 

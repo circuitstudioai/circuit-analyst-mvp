@@ -36,7 +36,7 @@ Vercel preview deployment URLs are temporary.
 - `PUBLIC_APP_URL`: permanent origin used in magic-link redirects (production: `https://circuit-analyst.vercel.app`).
 - `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: persist runs/signals.
 - `CIRCUIT_JOB_SECRET` or `CRON_SECRET`: protects batch write endpoints.
-- `MARKET_DESK_VNEXT_ROLLOUT`: controls the Living Thesis experience. `off` hides the route and keeps the current Research navigation; `preview` allows only direct `/market-desk` access; `on` also promotes Monitor in navigation and on the homepage. It defaults to `preview` on Vercel Preview/local development and fails closed to `off` in production.
+- `MARKET_DESK_VNEXT_ROLLOUT`: controls the Living Thesis experience. `off` hides the route and keeps the current Research navigation; `preview` allows only direct `/market-desk` access; `on` also promotes Monitor in navigation and on the homepage. It defaults to `preview` on Vercel Preview/local development and fails closed to `off` in production when unset. Production is currently explicitly configured as `on`; switch it to `off` and redeploy to use the kill switch.
 
 ## Market Desk vNext rollout
 

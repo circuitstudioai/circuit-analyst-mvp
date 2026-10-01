@@ -1,10 +1,10 @@
-# Market Desk vNext — Milestone 3 review guide
+# Market Desk vNext — review and live-boundary guide
 
 ## What this build proves
 
-This is a production-shaped, controlled-fixture prototype of the Change Inbox, Living Thesis, and Decision Room product loop. All five companies use the same runtime-validated contracts, fixture repository, ranking and diff policies, and shared interface components.
+This is a production-shaped five-company preview of the Change Inbox, Living Thesis, and Decision Room product loop, plus a separately labeled NVDA-only live evidence slice. All five companies use the same runtime-validated contracts, fixture repository, ranking and diff policies, and shared interface components.
 
-The prototype does not run unattended research, monitor live sources, persist judgments to Supabase, or send notifications. Source links and publication metadata are included to test evidence navigation; the fixture wording is a controlled product artifact and should not be treated as current investment research.
+The preview does not run unattended research or send notifications. Its primary five-company thesis and inbox content remains fixture-backed and should not be treated as current investment research. The NVDA live slice can run an authenticated, idempotent primary-filing evidence pass and persist server-side research records. Judgment and annotation APIs also exist, although the visible preview still primarily uses browser-session state.
 
 ## Five-minute founder review
 
@@ -40,7 +40,7 @@ The prototype does not run unattended research, monitor live sources, persist ju
 
 ## Known limitations and live-data boundary
 
-- All research content and events are deterministic controlled fixtures as of the displayed fixture cutoff.
+- The primary five-company thesis, inbox, and Decision Room content is deterministic controlled fixture data as of the displayed cutoff. The separately labeled NVDA cycle is the only live research claim.
 - Mandate changes, judgments, and the watch-condition text are stored in `sessionStorage` for the current browser tab. They survive refresh and in-tab navigation. They are not stored on the account, and they disappear when the tab closes.
 - Company, change, thesis version, and evidence selection are restored from the `/market-desk` URL. The current thesis version is the default; earlier versions are selectable on the company view.
 - The research chart loads adjusted price and volume for the five pilot companies. If the provider fails, the desk shows a failed or missing state and still lists evidence-linked markers. Chart notes saved from the page stay in this browser tab and are omitted from the URL.
@@ -70,7 +70,4 @@ git diff --check
 - `preview`: `/market-desk` is available by direct link, with no homepage or primary-navigation promotion.
 - `on`: Monitor appears in primary navigation and the homepage presents the Monitor → Decision Room → Research journey.
 
-Vercel Preview and local development default to `preview`. Production defaults to
-`off`, so merging the branch cannot expose the prototype unless the production
-environment is explicitly changed and redeployed. Returning the variable to
-`off` is the rollout kill switch.
+Vercel Preview and local development default to `preview`; the application code fails closed to `off` in production when the variable is absent. Production is currently explicitly configured as `on`, so Market Desk is publicly reachable and promoted in navigation. Returning the production variable to `off` and redeploying is the rollout kill switch.
