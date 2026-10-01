@@ -1,10 +1,24 @@
 # Market Desk vNext — Living Thesis
 
 **Document type:** Product requirements document and delivery plan  
-**Status:** Approved for Milestones 1–3
+**Status:** Milestones 1–3 complete; Milestone 4 pending; Milestone 5 partially implemented
 **Date:** 2026-09-19  
 **Owner:** Circuit Studio AI  
-**Implementation status:** Milestones 1–3 authorized on `feat/market-desk-vnext-prototype`.
+**Implementation status (updated 2026-10-01):** The five-company fixture prototype is live, and an evidence-backed NVDA-only live slice is deployed. COST, XOM, JPM, and HIMS remain fixture-backed. Milestone 4 has completed 0/5 moderated sessions. Monitoring, alerts, arbitrary watchlists, and unattended scheduling remain disabled.
+
+### Delivery status at a glance
+
+| Milestone | Status | Evidence / remaining gate |
+| --- | --- | --- |
+| 1 — Contracts, fixtures, and tests | Complete | Shared runtime contracts, five-company fixtures, ranking, diff, lineage, and policy tests are merged. |
+| 2 — Five-company experience | Complete | Change Inbox, Living Thesis, Decision Rooms, Decision Lab, and research handoff are deployed for the five-company fixture set. |
+| 3 — Integrity and review build | Complete | Honest fixture/live labels, restorable URL state, responsive flows, regression coverage, and the review guide are merged. |
+| 4 — Manual user validation | Not started | 0/5 moderated target-user sessions; the protocol is in `docs/MARKET_DESK_USER_VALIDATION.md`. This remains the product-direction gate. |
+| 5 — Five-company live vertical slice | In progress | Live adjusted chart data supports the five pilot symbols, while the persisted evidence-to-thesis cycle is NVDA-only and separately labeled. The primary five-company thesis/inbox UI remains fixture-backed. |
+| 6 — 25-company archetype pilot | Not started | Gated on Milestones 4 and 5. |
+| 7 — Limited user watchlists and monitoring | Not started | Gated on the 25-company pilot plus data, security, privacy, and legal review. |
+
+Milestone 5 is not complete until all five companies can run the same durable baseline and update loop, live evidence can drive the primary thesis/inbox experience, failure and abstention behavior are verified, and operating quality is measurable. The deployed NVDA slice is implementation evidence, not approval to skip Milestone 4.
 
 ## 1. Executive summary
 

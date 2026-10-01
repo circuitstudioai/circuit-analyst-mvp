@@ -2,6 +2,20 @@
 
 The hardened live slice covers NVDA only. COST, XOM, JPM, and HIMS remain fixture-backed preview companies. The slice does not send alerts and does not accept user-selected watchlists.
 
+## Current delivery status
+
+| Area | Status |
+| --- | --- |
+| Five-company preview | Deployed; primary thesis, inbox, and Decision Room content is fixture-backed |
+| Live market chart | Deployed for the five pilot symbols |
+| Live evidence-to-thesis cycle | NVDA only; separately labeled from fixture content |
+| Durable research records | Server-side runs, evidence, markers, judgments, and annotations are available |
+| Moderated validation | 0/5 sessions complete |
+| Scheduled research and alerts | Disabled |
+| User-selected watchlists | Disabled |
+
+The authoritative vNext roadmap and milestone status live in `docs/MARKET_DESK_VNEXT_PRD.md`. The repository-root `MILESTONES.md` describes the legacy Analyst MVP and is not the Market Desk vNext delivery tracker.
+
 ## Run one evidence pass
 
 `POST /api/market-desk/cycle` with `Authorization: Bearer $CIRCUIT_JOB_SECRET`.
